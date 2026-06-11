@@ -1,0 +1,25 @@
+__pycache__/
+*.py[cod]
+*$py.class
+
+# VSCode/IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Virtual Environments
+venv/
+env/
+.venv/
+
+# Local Testing/Temporary Files
+_test*.py
+_fix*.py
+
+# AppGuard Data (Kept in AppData by default, but ignore if accidentally placed in repo)
+config.json
+config.ag
+machine.key
+*.agbackup
+*.log
