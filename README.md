@@ -23,7 +23,7 @@ Ensure you have Python 3.10+ installed on your Windows machine.
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/yourusername/AppGuard.git
+   git clone https://github.com/yxdooo/AppGuard.git
    cd AppGuard
    ```
 
