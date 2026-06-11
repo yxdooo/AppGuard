@@ -1,19 +1,11 @@
 """
-core/guard_service.py — Arka plan process izleme servisi
+Core background service responsible for monitoring and blocking processes.
 
-İzin Hiyerarşisi (en yüksekten en düşüğe):
-  1. _session_allowed_exes  : Kullanıcı şifre girdi → o exe TÜM OTURUM boyunca serbest.
-                              Chrome gibi çok process açan uygulamalarda sürekli şifre
-                              sorulmamasını sağlar. Sadece acil kilit / ekran kilidi
-                              ile temizlenir.
-
-  2. _allowed_pids          : Belirli PID'lere tek seferlik izin (yedek güvence).
-                              Ölü PID'ler her scan'de temizlenir.
-
-  3. _processing            : Dialog açık olan exe'ler — scan tekrar yakalamaz.
-
-  4. _active_blocks         : Dialog açıkken sürekli çalışan kill thread'leri.
-                              Kullanıcı şifre girmeden kapansa bile uygulama çalışamaz.
+Permission Hierarchy:
+  1. _session_allowed_exes : Apps allowed for the duration of the session.
+  2. _allowed_pids         : Short-lived explicit PIDs allowed to run.
+  3. _processing           : Apps currently showing the password dialog.
+  4. _active_blocks        : Threads continuously killing apps while dialog is open.
 """
 import json
 import os
@@ -36,9 +28,8 @@ class SignalBridge(QObject):
 
 class GuardService(threading.Thread):
     """
-    250ms'de bir tüm processleri tarar.
-    Korumalı exe açıldığında: yakala → güvenilir şekilde öldür → aktif bloker başlat → sinyal gönder.
-    Şifre girilince: o exe oturum boyunca serbest (tekrar şifre sorulmaz).
+    Background worker that monitors running processes every 250ms.
+    Detects protected applications, suspends them, and triggers the password dialog.
     """
 
     def __init__(self, config: Config, bridge: SignalBridge):
@@ -60,7 +51,7 @@ class GuardService(threading.Thread):
         self._active_blocks: Dict[str, threading.Event] = {}
 
         self._lock = threading.Lock()
-        self._interval = 0.25  # 250ms — hızlı yakalama
+        self._interval = 0.25  # 250ms — fast catch
 
     # ── External API ─────────────────────────────────────────────────────
 
@@ -76,11 +67,11 @@ class GuardService(threading.Thread):
 
     def session_allow_exe(self, exe_name: str):
         """
-        Exe adına OTURUM BAZLI izin ver.
-        Kullanıcı şifre doğruladıktan sonra çağrılır.
-        Chrome, Discord gibi çok process açan uygulamalarda
-        bir sonraki şifre sormayı tamamen engeller.
-        Sadece clear_all_pids() (acil kilit / ekran kilidi) ile temizlenir.
+        Give SESSION-BASED permission to exe name.
+        Called after user verifies password.
+        In multi-process apps like Chrome, Discord
+        completely prevents the next password prompt.
+        Sadece clear_all_pids() (acil kilit / ekran kilidi) 
         """
         name = exe_name.lower()
         with self._lock:
@@ -89,16 +80,16 @@ class GuardService(threading.Thread):
         # Stop active blocker (dialog closing, no more killing)
         self._stop_active_block(name)
 
-    # Backward compatibility — for old allow_exe calls
+    # Backward compatibility -> for old allow_exe calls
     def allow_exe(self, exe_name: str, duration: float = 15.0):
         """Grant session permission (duration is obsolete, session-based)."""
         self.session_allow_exe(exe_name)
 
     def release_exe(self, exe_name: str):
         """
-        Diyalog kapandıktan sonra processing kuyruğundan çıkar.
-        Şifre GİRİLMEDİYSE (iptal): bloker durduruluyor ama session allow YOK,
-        yani bir sonraki açılış denemesinde tekrar şifre sorulacak.
+        Remove from processing queue after dialog closes.
+        If password NOT ENTERED (cancel): blocker stopped but NO session allow,
+        so password will be asked again on the next launch attempt.
         """
         name = exe_name.lower()
         with self._lock:
@@ -109,8 +100,8 @@ class GuardService(threading.Thread):
 
     def clear_all_pids(self):
         """
-        Acil kilit veya ekran kilidi: tüm oturum izinlerini sıfırla.
-        Sonraki her koruma girişimi için şifre tekrar istenecek.
+        Emergency lock or screen lock: reset all session permissions.
+        Password will be asked again for every next protection attempt.
         """
         with self._lock:
             self._allowed_pids.clear()
@@ -137,8 +128,8 @@ class GuardService(threading.Thread):
 
     def _kill_process(self, proc) -> bool:
         """
-        Process'i güvenilir şekilde öldür.
-        psutil.kill() başarısız olursa taskkill /f /pid /t fallback kullanır.
+        Reliably kill the process.
+        If psutil.kill() fails, uses taskkill /f /pid /t fallback.
         """
         pid = proc.pid
         # 1. psutil dene
@@ -150,7 +141,7 @@ class GuardService(threading.Thread):
                 pass
             return True
         except psutil.NoSuchProcess:
-            return True  # Zaten ölmüş
+            return True  # Already dead
         except psutil.ZombieProcess:
             return True
         except (psutil.AccessDenied, Exception):
@@ -188,8 +179,8 @@ class GuardService(threading.Thread):
 
     def _start_active_block(self, exe_name: str):
         """
-        Dialog açık olduğu sürece exe'yi sürekli öldüren thread.
-        Kullanıcı şifre girmese bile uygulama çalışamaz.
+        Thread continuously killing exe while dialog is open.
+        App cannot run even if user does not enter password.
         """
         if exe_name in self._active_blocks:
             return  # Already running
@@ -270,7 +261,7 @@ class GuardService(threading.Thread):
                     continue
 
                 with self._lock:
-                    # 1. Session allowed? → skip completely
+                    # 1. Session allowed? -> skip completely
                     if pname in self._session_allowed_exes:
                         self._allowed_pids.add(pid)
                         continue
@@ -280,7 +271,7 @@ class GuardService(threading.Thread):
                     # 3. Is dialog already open?
                     if pname in self._processing:
                         continue
-                    # New catch — process it
+                    # New catch -> process it
                     self._processing.add(pname)
                     open('guard_debug.log', 'a').write(f'MATCHED {pname}\n')
 
@@ -299,15 +290,15 @@ class GuardService(threading.Thread):
                 # 1. Kill instantly
                 killed = self._kill_process(proc)
                 if killed:
-                    self.config.log_activity("Engellendi", f"{display_name} açılmaya çalışıldı.")
+                    self.config.log_activity("Blocked", f"Attempted to open {display_name}.")
 
-                # 2. Start active blocker — continuously block while dialog is open
+                # 2. Start active blocker -> continuously block while dialog is open
                 self._start_active_block(pname)
 
                 # 3. Notify user and prompt for password
                 self.sig.show_notification.emit(
                     "🛡️ AppGuard",
-                    f'"{display_name}" açılmaya çalışıldı — şifre gerekiyor.',
+                    f'"{display_name}" attempted to launch — password required.',
                 )
                 self.sig.show_password_dialog.emit(
                     app_id, auth_id, display_name, pexe,
@@ -319,8 +310,8 @@ class GuardService(threading.Thread):
 
     def _best_match(self, candidates: list, exe_path: str) -> tuple:
         """
-        Birden fazla aday varsa exe_path'e göre en iyi eşleşmeyi bul.
-        Sıra: Tam path > Klasör eşleşmesi > İlk kayıt
+        If multiple candidates, find best match by exe_path.
+        Order: Exact path > Folder match > First record
         """
         if len(candidates) == 1:
             return candidates[0]

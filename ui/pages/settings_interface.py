@@ -101,7 +101,7 @@ class SettingsInterface(ScrollArea):
         self.languageCard = SimpleComboBoxSettingCard(
             FIF.LANGUAGE,
             t("setting_language"),
-            "English veya Türkçe olarak değiştirin (Uygulamayı yeniden başlatın)",
+            "Change to English or Turkish (Restart app to apply)",
             texts=["Türkçe", "English"],
             parent=self.appearanceGroup
         )
@@ -162,7 +162,7 @@ class SettingsInterface(ScrollArea):
     def _change_language(self, index):
         lang = "tr" if index == 0 else "en"
         self.config.set_setting("language", lang)
-        QMessageBox.information(self, t("success_title"), "Dil değiştirildi. Lütfen uygulamayı yeniden başlatın.\nLanguage changed. Please restart the app.")
+        QMessageBox.information(self, t("success_title"), "Language changed. Please restart the app.")
         
     def _toggle_guardian(self, state):
         self.config.set_setting("guardian_enabled", bool(state))
@@ -218,25 +218,25 @@ class SettingsInterface(ScrollArea):
             winreg.CloseKey(key)
             self.config.set_setting("start_with_windows", bool(state))
         except Exception as e:
-            QMessageBox.warning(self, "Hata", f"Başlangıç ayarı değiştirilemedi: {e}")
+            QMessageBox.warning(self, "Error", f"Startup setting could not be changed: {e}")
 
     def _backup(self):
-        dlg = PasswordInputWithStrength(t("backup_section"), "Yedek Dosyası Şifresi (Yeni):", parent=self)
+        dlg = PasswordInputWithStrength(t("backup_section"), "Backup File Password (New):", parent=self)
         if dlg.exec() != dlg.DialogCode.Accepted: return
         pw = dlg.get_password()
         
         path, _ = QFileDialog.getSaveFileName(self, "Save", "appguard_backup.agbackup", "Backup (*.agbackup)")
         if path:
             if create_backup(self.config.data, pw, path):
-                QMessageBox.information(self, t("success_title"), "Yedek alındı.")
+                QMessageBox.information(self, t("success_title"), "Backup created.")
             else:
-                QMessageBox.warning(self, t("error_title"), "Yedek alınamadı.")
+                QMessageBox.warning(self, t("error_title"), "Backup failed.")
 
     def _restore(self):
         path, _ = QFileDialog.getOpenFileName(self, "Open", "", "Backup (*.agbackup)")
         if not path: return
         
-        dlg = PasswordInputWithStrength(t("backup_section"), "Yedek Şifresi:", parent=self)
+        dlg = PasswordInputWithStrength(t("backup_section"), "Backup Password:", parent=self)
         if dlg.exec() != dlg.DialogCode.Accepted: return
         pw = dlg.get_password()
         
@@ -244,7 +244,7 @@ class SettingsInterface(ScrollArea):
         if data:
             self.config.data = data
             self.config.save()
-            QMessageBox.information(self, t("success_title"), "Geri yüklendi. Uygulamayı yeniden başlatın.")
+            QMessageBox.information(self, t("success_title"), "Restored. Please restart the application.")
             self.main_window.close()
         else:
-            QMessageBox.warning(self, t("error_title"), "Şifre yanlış veya dosya bozuk.")
+            QMessageBox.warning(self, t("error_title"), "Wrong password or corrupted file.")

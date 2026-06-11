@@ -1,5 +1,5 @@
 """
-ui/mini_widget.py — Masaüstü Mini Widget
+ui/mini_widget.py — Desktop Mini Widget
 """
 from PyQt6.QtWidgets import QWidget, QLabel, QVBoxLayout, QPushButton, QHBoxLayout
 from PyQt6.QtCore import Qt, QPoint
@@ -47,7 +47,7 @@ class MiniWidget(QWidget):
         self.stat_lbl.setStyleSheet("color: #cbd5e1; font-size: 10px;")
         lay.addWidget(self.stat_lbl)
         
-        open_btn = QPushButton("Paneli Aç")
+        open_btn = QPushButton("Open Panel")
         open_btn.setFixedHeight(22)
         open_btn.setStyleSheet(f"background: {get_accent_color()}; color: white; border-radius: 4px; font-size: 10px;")
         open_btn.clicked.connect(self.on_open_dashboard)
@@ -55,7 +55,7 @@ class MiniWidget(QWidget):
 
     def update_stats(self):
         apps = len(self.config.get_protected_apps())
-        self.stat_lbl.setText(f"{apps} Korumalı")
+        self.stat_lbl.setText(f"{apps} Protected")
         self.update()
 
     def paintEvent(self, event):

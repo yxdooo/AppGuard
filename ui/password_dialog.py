@@ -1,5 +1,5 @@
 """
-ui/password_dialog.py — Şifre giriş penceresi (tema + i18n + grup + şifre gücü + ipucu)
+ui/password_dialog.py — Password input dialog (theme + i18n + group + strength + hint)
 """
 import os
 
@@ -175,7 +175,7 @@ class PasswordDialog(QDialog):
                 hint_btn = QPushButton("💡")
                 hint_btn.setProperty("role", "icon")
                 hint_btn.setFixedSize(32, 32)
-                hint_btn.setToolTip(f"İpucu: {hint}")
+                hint_btn.setToolTip(f"Hint: {hint}")
                 hdr.addWidget(hint_btn)
 
         lock_lbl = QLabel("🔒")
@@ -294,10 +294,10 @@ class PasswordDialog(QDialog):
 
         if self.is_master:
             if self.config.verify_master_password(pw):
-                self.config.log_activity("Giriş Başarılı", "Yönetim Paneline giriş yapıldı.")
+                self.config.log_activity("Login Successful", "Logged into Management Panel.")
                 self._timer.stop(); self.accept()
             else:
-                self.config.log_activity("Hatalı Master Şifre", "Yönetim Paneline hatalı giriş denemesi.")
+                self.config.log_activity("Incorrect Master Password", "Failed login attempt to Management Panel.")
                 self.pw_edit.clear()
                 self.status_lbl.setText(f"❌  {t('pw_wrong')}")
                 self.status_lbl.setStyleSheet("color: #f87171; font-weight: 700; background: transparent;")
@@ -312,22 +312,22 @@ class PasswordDialog(QDialog):
             ok = self.config.verify_group_password(self.auth_id, pw)
             if ok:
                 self.config.record_group_success(self.auth_id)
-                self.config.log_activity("Giriş Başarılı", f"Grup: {self.app_name}")
+                self.config.log_activity("Login Successful", f"Group: {self.app_name}")
                 self._timer.stop(); self.accept()
             else:
                 self.config.record_group_failed(self.auth_id)
-                self.config.log_activity("Hatalı Şifre", f"Grup: {self.app_name}")
+                self.config.log_activity("Incorrect Password", f"Group: {self.app_name}")
                 self.pw_edit.clear(); self.pw_edit.setFocus()
                 self._update_status()
         else:
             ok = self.config.verify_app_password(self.auth_id, pw)
             if ok:
                 self.config.record_success(self.auth_id)
-                self.config.log_activity("Giriş Başarılı", f"Uygulama: {self.app_name}")
+                self.config.log_activity("Login Successful", f"App: {self.app_name}")
                 self._timer.stop(); self.accept()
             else:
                 self.config.record_failed_attempt(self.auth_id)
-                self.config.log_activity("Hatalı Şifre", f"Uygulama: {self.app_name}")
+                self.config.log_activity("Incorrect Password", f"App: {self.app_name}")
                 self.pw_edit.clear(); self.pw_edit.setFocus()
                 self._update_status()
 
@@ -356,7 +356,7 @@ class PasswordDialog(QDialog):
         else:
             self.config.set_app_password(self.auth_id, new_pw)
 
-        self.config.log_activity("USB Sıfırlama", f"{self.app_name} için şifre sıfırlandı.")
+        self.config.log_activity("USB Reset", f"Password reset for {self.app_name}.")
         QMessageBox.information(self, t("success_title"), t("pw_reset_success"))
         self._timer.stop(); self.accept()
 
@@ -423,7 +423,7 @@ class PasswordInputWithStrength(QDialog):
 
         if self._show_hint:
             self.hint_edit = QLineEdit()
-            self.hint_edit.setPlaceholderText("İsteğe bağlı: Şifre ipucu")
+            self.hint_edit.setPlaceholderText("Optional: Password hint")
             self.hint_edit.setFixedHeight(44)
             lay.addWidget(self.hint_edit)
 

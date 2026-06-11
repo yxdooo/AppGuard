@@ -1,6 +1,6 @@
 """
-ui/theme.py — Dinamik QSS tema üreteci
-Seçilen renk aksanına göre tüm arayüzün stilini üretir.
+ui/theme.py — Dynamic QSS theme generator
+Generates complete UI style based on selected color accent.
 """
 
 # For each theme: (main color, dark, darker)
@@ -72,7 +72,7 @@ QListWidget::item {{ padding: 10px 12px; border-radius: 6px; color: #cbd5e1;
 QListWidget::item:selected {{ background: {dd}; color: #f1f5f9; }}
 QListWidget::item:hover {{ background: #18182e; }}
 
-/* ── Giriş ── */
+/* ── Input ── */
 QLineEdit {{ background: #1a1a2e; color: #e2e8f0; border: 2px solid #2d2d50;
     border-radius: 8px; padding: 10px 14px; font-size: 13px;
     selection-background-color: {a}; }}
@@ -97,7 +97,7 @@ QScrollBar:vertical {{ background: #1a1a2e; width: 8px; }}
 QScrollBar::handle:vertical {{ background: #3d3d5c; border-radius: 4px; min-height: 30px; }}
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
 
-/* ── Menü ── */
+/* ── Menu ── */
 QMenu {{ background: #1a1a2e; color: #e2e8f0; border: 1px solid #2d2d50;
     border-radius: 8px; padding: 4px; }}
 QMenu::item {{ padding: 8px 20px; border-radius: 4px; }}
@@ -108,6 +108,6 @@ QMenu::separator {{ background: #2d2d50; height: 1px; margin: 4px 8px; }}
 QToolTip {{ background: #1e1e38; color: #e2e8f0; border: 1px solid #3d3d5c;
     border-radius: 6px; padding: 4px 8px; }}
 
-/* ── Frame ayırıcı ── */
+/* ── Frame divider ── */
 QFrame[role="divider"] {{ background: #1e1e38; min-height: 1px; max-height: 1px; border: none; }}
 """

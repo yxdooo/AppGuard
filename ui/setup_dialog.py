@@ -1,5 +1,5 @@
 """
-ui/setup_dialog.py — İlk kurulum sihirbazı (dil + tema seçimi)
+ui/setup_dialog.py — Initial setup wizard (language + theme selection)
 """
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,

@@ -1,6 +1,6 @@
 """
-core/config.py — Yapılandırma yönetimi
-Şifreler, kilit durumu, USB whitelist, gruplar ve uygulama ayarları.
+core/config.py — Configuration management
+Passwords, lock status, USB whitelist, groups and app settings.
 """
 import json
 import os
@@ -23,7 +23,7 @@ def _default() -> dict:
         "groups": {},
         "usb_whitelist": [],
         "profiles": {
-            "default": {"name": "Varsayılan", "disabled_apps": []}
+            "default": {"name": "Default", "disabled_apps": []}
         },
         "active_profile": "default",
         "activity_log": [],
@@ -48,7 +48,7 @@ class Config:
         for k, v in _default()["settings"].items():
             self.data.setdefault("settings", {}).setdefault(k, v)
         self.data.setdefault("groups", {})
-        self.data.setdefault("profiles", {"default": {"name": "Varsayılan", "disabled_apps": []}})
+        self.data.setdefault("profiles", {"default": {"name": "Default", "disabled_apps": []}})
         self.data.setdefault("active_profile", "default")
         self.data.setdefault("activity_log", [])
 
@@ -304,7 +304,7 @@ class Config:
 
     def get_auth_target(self, app_id: str) -> tuple[str, str, bool]:
         """
-        Uygulama için kimlik doğrulama hedefini döner.
+        Returns the authentication target for the application.
         Returns: (effective_id, display_name, is_group)
         """
         for gid, g in self.data.get("groups", {}).items():

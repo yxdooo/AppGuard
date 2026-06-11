@@ -1,6 +1,6 @@
 """
-core/backup.py — Şifreli yedekleme sistemi (.agbackup)
-Ayarları, profilleri ve uygulamaları AES-256-GCM ile şifreler/çözer.
+core/backup.py — Encrypted backup system (.agbackup)
+Encrypts/decrypts settings, profiles and apps with AES-256-GCM.
 """
 import json
 import os

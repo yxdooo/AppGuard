@@ -1,6 +1,6 @@
 """
-core/remote_lock.py — Uzaktan kilitleme için HTTP Sunucusu
-Telefonla bilgisayarı anında kilitlemek için token korumalı web paneli.
+core/remote_lock.py — HTTP Server for remote locking
+Token-protected web panel to instantly lock PC from phone.
 """
 import threading
 import json
@@ -47,15 +47,15 @@ class LockRequestHandler(BaseHTTPRequestHandler):
             </head>
             <body>
                 <h1>🛡️ AppGuard</h1>
-                <button onclick="lock()">KİLİTLE</button>
+                <button onclick="lock()">LOCK</button>
                 <script>
                     function lock() {{
                         fetch('/lock?token={self.server.auth_token}', {{method: 'POST'}})
                         .then(r => {{
-                            if(r.ok) alert('Sistem başarıyla kilitlendi!');
-                            else alert('Yetkisiz işlem!');
+                            if(r.ok) alert('System locked successfully!');
+                            else alert('Unauthorized action!');
                         }})
-                        .catch(() => alert('Hata oluştu!'));
+                        .catch(() => alert('Error occurred!'));
                     }}
                 </script>
             </body>
@@ -79,7 +79,7 @@ class LockRequestHandler(BaseHTTPRequestHandler):
             self.send_error(404)
 
     def log_message(self, format, *args):
-        pass  # Konsol kirliliğini önle
+        pass  # Prevent console clutter
 
 
 class RemoteLockServer(threading.Thread):
@@ -97,7 +97,7 @@ class RemoteLockServer(threading.Thread):
             self.server.auth_token = self.auth_token
             self.server.serve_forever()
         except Exception as e:
-            print(f"RemoteLockServer Hatası: {e}")
+            print(f"RemoteLockServer Error: {e}")
 
     def stop(self):
         if self.server:
@@ -126,4 +126,4 @@ def generate_qr_code(ip: str, port: int, token: str, save_path: str):
         img = qr.make_image(fill_color="black", back_color="white")
         img.save(save_path)
     except Exception as e:
-        print(f"QR kodu üretilemedi: {e}")
+        print(f"QR code could not be generated: {e}")

@@ -1,5 +1,5 @@
 """
-core/usb_detector.py — USB sürücü takma/çıkarma izleme
+core/usb_detector.py — USB drive connect/disconnect monitoring
 """
 import string
 import threading

@@ -1,5 +1,5 @@
 """
-ui/notes_dialog.py — Şifreli Not Defteri
+ui/notes_dialog.py — Encrypted Notepad
 """
 from PyQt6.QtWidgets import QDialog, QVBoxLayout, QTextEdit, QPushButton, QHBoxLayout, QLabel, QMessageBox
 from PyQt6.QtCore import Qt
@@ -15,7 +15,7 @@ class NotesDialog(QDialog):
         self.config = config
         self.notes_file = os.path.join(CONFIG_DIR, "notes.enc")
         
-        self.setWindowTitle("🛡️ Şifreli Not Defteri")
+        self.setWindowTitle("🛡️ Encrypted Notepad")
         self.setFixedSize(500, 400)
         self.setStyleSheet(get_style("#0f0f23"))
         
@@ -25,7 +25,7 @@ class NotesDialog(QDialog):
     def _build_ui(self):
         lay = QVBoxLayout(self)
         
-        lbl = QLabel("Gizli Notlarınız (AES-256 ile şifrelenir)")
+        lbl = QLabel("Secret Notes (Encrypted with AES-256)")
         lbl.setStyleSheet("color: #94a3b8; font-weight: bold;")
         lay.addWidget(lbl)
         
@@ -72,7 +72,7 @@ class NotesDialog(QDialog):
             encrypted = f.encrypt(text)
             with open(self.notes_file, "wb") as file:
                 file.write(encrypted)
-            QMessageBox.information(self, "Başarılı", "Notlarınız güvenle şifrelenip kaydedildi.")
+            QMessageBox.information(self, "Success", "Your notes securely encrypted and saved.")
             self.accept()
         except Exception as e:
             QMessageBox.warning(self, "Hata", f"Notlar kaydedilemedi: {e}")

@@ -1,6 +1,6 @@
 """
-main.py — AppGuard Pro Ana Giriş Noktası
-Sistem tepsisi, guard servisi, USB izleyici, ekran kilidi monitörü, global kısayol, widget, performans izleyici, uzaktan kilit.
+main.py — AppGuard Pro Main Entry Point
+System tray, guard service, USB monitor, screen lock monitor, global hotkey, widget, performance monitor, remote lock.
 """
 import sys
 import os
@@ -110,14 +110,14 @@ class AppGuardController(QObject):
     def _setup_tray_menu(self):
         menu = QMenu()
         menu.setStyleSheet(get_style())
-        open_act = menu.addAction("🛡️  Paneli Aç")
+        open_act = menu.addAction("🛡️  Open Panel")
         open_act.triggered.connect(self.show_dashboard)
         
         menu.addSeparator()
-        lock_act = menu.addAction("⚡  Acil Kilit")
+        lock_act = menu.addAction("⚡  Emergency Lock")
         lock_act.triggered.connect(self._emergency_lock)
         menu.addSeparator()
-        quit_act = menu.addAction("✕  Çıkış")
+        quit_act = menu.addAction("✕  Exit")
         quit_act.triggered.connect(self._quit)
         self.tray.setContextMenu(menu)
         self.tray.activated.connect(self._on_tray_click)
@@ -216,8 +216,8 @@ class AppGuardController(QObject):
     def _on_screen_lock(self):
         if self.config.get_setting("lock_on_screen_lock", True):
             self.guard.clear_all_pids()
-            self._on_notification("🔒 AppGuard", "Ekran kilitlendi, izinler sıfırlandı.")
-            self.config.log_activity("Ekran Kilitlendi", "Tüm oturum izinleri sıfırlandı.")
+            self._on_notification("🔒 AppGuard", "Screen locked, permissions reset.")
+            self.config.log_activity("Screen Locked", "All session permissions reset.")
 
     def _on_screen_unlock(self):
         pass
@@ -225,8 +225,8 @@ class AppGuardController(QObject):
     # ── Emergency Lock ───────────────────────────────────────────────────
     def _emergency_lock(self):
         self.guard.clear_all_pids()
-        self._on_notification("⚡ AppGuard", "Sistem acil olarak kilitlendi!")
-        self.config.log_activity("Acil Kilit", "Tüm izinler sıfırlandı.")
+        self._on_notification("⚡ AppGuard", "System emergency locked!")
+        self.config.log_activity("Emergency Lock", "All permissions reset.")
 
     # ── USB ──────────────────────────────────────────────────────────────
     def _check_usbs(self):
@@ -238,8 +238,8 @@ class AppGuardController(QObject):
     def _on_usb_connect(self, info: dict):
         if self.config.is_usb_whitelisted(info["serial"]):
             self.usb_available = True
-            self.sig.show_notification.emit("🔑 AppGuard", f"Güvenilir USB: {info['label']}")
-            self.config.log_activity("USB Bağlandı", info['label'])
+            self.sig.show_notification.emit("🔑 AppGuard", f"Trusted USB: {info['label']}")
+            self.config.log_activity("USB Connected", info['label'])
 
     def _on_usb_disconnect(self, serial: str):
         if self.config.is_usb_whitelisted(serial):
@@ -247,8 +247,8 @@ class AppGuardController(QObject):
                 self.config.is_usb_whitelisted(d["serial"])
                 for d in get_removable_drives())
             if not self.usb_available:
-                self.sig.show_notification.emit("🔑 AppGuard", "Güvenilir USB çıkarıldı.")
-                self.config.log_activity("USB Çıkarıldı", serial)
+                self.sig.show_notification.emit("🔑 AppGuard", "Trusted USB disconnected.")
+                self.config.log_activity("USB Disconnected", serial)
 
     # ── Setting Updates ──────────────────────────────────────────────────
     def _check_settings_update(self):

@@ -1,5 +1,5 @@
 """
-core/performance_monitor.py — CPU bazlı adaptif tarama sıklığı (Polling Interval)
+core/performance_monitor.py — CPU-based adaptive polling interval
 """
 import psutil
 import threading

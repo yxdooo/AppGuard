@@ -130,4 +130,4 @@ class MainWindow(FluentWindow):
         if hasattr(self, "_emergency_lock_cb") and self._emergency_lock_cb:
             self._emergency_lock_cb()
         else:
-            QMessageBox.information(self, "⚡ Acil Kilit", "Acil kilit etkinleştirildi.")
+            QMessageBox.information(self, "⚡ Emergency Lock", "Emergency lock activated.")

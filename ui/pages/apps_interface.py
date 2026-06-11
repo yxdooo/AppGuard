@@ -63,7 +63,7 @@ class AppLockInterface(ScrollArea):
             self.appList.addItem(item)
 
     def _on_add_app(self):
-        path, _ = QFileDialog.getOpenFileName(self, "Uygulama Seç", "C:\\Program Files", "Executable (*.exe)")
+        path, _ = QFileDialog.getOpenFileName(self, "Select Application", "C:\\Program Files", "Executable (*.exe)")
         if path:
             name = os.path.basename(path).replace(".exe", "")
             self.app_added.emit(name, path)

@@ -1,5 +1,5 @@
 """
-ui/styles.py — AppGuard koyu tema stil dosyası (QSS)
+ui/styles.py — AppGuard dark theme stylesheet (QSS)
 """
 
 APP_STYLE = """
@@ -64,7 +64,7 @@ QPushButton[secondary="true"] {
 }
 QPushButton[secondary="true"]:hover { background-color: #2d2d50; color: #e2e8f0; }
 
-/* ── Giriş Alanları ── */
+/* ── Input Fields ── */
 QLineEdit {
     background-color: #1a1a2e;
     color: #e2e8f0;
@@ -122,10 +122,10 @@ QCheckBox::indicator {
 QCheckBox::indicator:checked { background: #7c3aed; }
 QCheckBox::indicator:hover { border: 1px solid #7c3aed; }
 
-/* ── Araç çubuğu yok ── */
+/* ── No toolbar ── */
 QMainWindow::separator { background: #1e1e38; width: 1px; }
 
-/* ── Bölücü Çizgi ── */
+/* ── Divider Line ── */
 QFrame[line="true"] {
     background-color: #1e1e38;
     border: none;

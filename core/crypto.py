@@ -1,5 +1,5 @@
 """
-core/crypto.py — Şifreleme, Hashleme ve Güvenlik (Argon2id + AES-256-GCM + DPAPI)
+core/crypto.py — Encryption, Hashing and Security (Argon2id + AES-256-GCM + DPAPI)
 """
 import os
 import hashlib
@@ -17,13 +17,13 @@ def generate_salt() -> str:
 
 def hash_password(password: str, legacy_salt: str = None) -> str:
     """
-    Şifreyi Argon2id ile hashler. (legacy_salt sadece imza uyumluluğu için)
+    Hashes password with Argon2id. (legacy_salt for signature compat only)
     """
     return ph.hash(password)
 
 def verify_password(password: str, stored_hash: str, legacy_salt: str = None) -> bool:
     """
-    Şifreyi doğrular. Hem Argon2 hem de eski SHA-256 (migration için) destekler.
+    Verifies password. Supports both Argon2 and legacy SHA-256 (migration).
     """
     if stored_hash.startswith("$argon2"):
         try:
@@ -40,8 +40,8 @@ def verify_password(password: str, stored_hash: str, legacy_salt: str = None) ->
 
 def get_machine_key(key_path: str) -> bytes:
     """
-    Windows DPAPI kullanarak makineye özel AES-256 anahtarını getirir.
-    Yoksa oluşturur ve şifreli kaydeder. Config şifrelemesi için kullanılır.
+    Fetches machine-specific AES-256 key using Windows DPAPI.
+    Creates if missing and saves encrypted. Used for config encryption.
     """
     entropy = b"AppGuard-Config-Key"
     if os.path.exists(key_path):

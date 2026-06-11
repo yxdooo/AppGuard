@@ -1,5 +1,5 @@
 """
-ui/animations.py — Arayüz için animasyonlu araçlar (Ripple vb.)
+ui/animations.py — Animated tools for UI (Ripple etc.)
 """
 from PyQt6.QtWidgets import QPushButton
 from PyQt6.QtCore import Qt, QPropertyAnimation, pyqtProperty, QPoint, QRect, QEasingCurve, pyqtSignal, QTimer

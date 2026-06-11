@@ -1,5 +1,5 @@
 """
-core/hotkey_manager.py — Küresel kısayol yönetimi (keyboard kütüphanesi)
+core/hotkey_manager.py — Global hotkey management (keyboard library)
 """
 from typing import Callable
 

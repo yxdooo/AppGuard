@@ -51,13 +51,13 @@ class GroupsInterface(ScrollArea):
             from PyQt6.QtWidgets import QListWidgetItem
             from PyQt6.QtCore import QSize
             n = len(g.get("app_ids", []))
-            item = QListWidgetItem(f"  🗂  {g['name']}  ({n} uygulama)")
+            item = QListWidgetItem(f"  🗂  {g['name']}  ({n} apps)")
             item.setData(Qt.ItemDataRole.UserRole, gid)
             item.setSizeHint(QSize(0, 46))
             self.groupList.addItem(item)
 
     def _on_add_group(self):
-        text, ok = QInputDialog.getText(self, "Yeni Grup", "Grup Adı:")
+        text, ok = QInputDialog.getText(self, "New Group", "Group Name:")
         if ok and text:
             self.group_added.emit(text)
 

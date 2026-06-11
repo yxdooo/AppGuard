@@ -1,6 +1,6 @@
 """
 core/session_monitor.py — Windows ekran kilidi tespiti
-OpenInputDesktop yöntemiyle her 2 saniyede bir kilit durumunu kontrol eder.
+Checks lock status every 2 seconds via OpenInputDesktop method.
 """
 import ctypes
 import threading
@@ -10,8 +10,8 @@ from typing import Callable
 
 class SessionMonitor(threading.Thread):
     """
-    Windows'ta ekran kilitlendiğinde on_lock, tekrar açıldığında on_unlock çağrılır.
-    OpenInputDesktop API: kilitliyken çağrı başarısız olur.
+    Calls on_lock when Windows screen locks, on_unlock when unlocked.
+    OpenInputDesktop API: call fails when locked.
     """
 
     def __init__(self, on_lock: Callable, on_unlock: Callable):
@@ -28,7 +28,7 @@ class SessionMonitor(threading.Thread):
         if hDesk:
             user32.CloseDesktop(hDesk)
             return False
-        return True  # Desktop açılamadı = kilitli
+        return True  # Desktop could not be opened = locked
 
     def run(self):
         while self._running:
