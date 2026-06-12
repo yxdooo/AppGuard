@@ -183,9 +183,9 @@ class SetupDialog(QDialog):
         for i, key in enumerate(_THEME_KEYS):
             self.theme_cb.setItemText(i, t(f"theme_{key}"))
 
-    def _submit(self):
+    def _submit(self) -> None:
         p1, p2 = self.pw1.text(), self.pw2.text()
-        if len(p1) < 4:
+        if len(p1) < 8:
             self.err_lbl.setText(f"❌  {t('setup_err_min')}")
             return
         if p1 != p2:

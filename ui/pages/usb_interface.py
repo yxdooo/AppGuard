@@ -1,5 +1,5 @@
-import os
-from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QMessageBox, QInputDialog
+﻿from PyQt6.QtWidgets import QWidget, QListWidgetItem
+from PyQt6.QtCore import QSize, QVBoxLayout, QHBoxLayout, QMessageBox, QInputDialog
 from PyQt6.QtCore import Qt, pyqtSignal
 from qfluentwidgets import (
     ScrollArea, SubtitleLabel, PrimaryPushButton, ListWidget, FluentIcon as FIF,
@@ -47,9 +47,7 @@ class UsbInterface(ScrollArea):
     def load_usbs(self, usb_list):
         self.usbList.clear()
         for usb in usb_list:
-            from PyQt6.QtWidgets import QListWidgetItem
-            from PyQt6.QtCore import QSize
-            item = QListWidgetItem(f"  🔑  {usb['label']}  ({usb['serial']})")
+            item = QListWidgetItem(f"  ğŸ”‘  {usb['label']}  ({usb['serial']})")
             item.setData(Qt.ItemDataRole.UserRole, usb["serial"])
             item.setSizeHint(QSize(0, 44))
             self.usbList.addItem(item)
@@ -80,3 +78,4 @@ class UsbInterface(ScrollArea):
         
         menu.addAction(delete_action)
         menu.exec(self.usbList.mapToGlobal(pos))
+

@@ -60,7 +60,10 @@ def verify_password(
     if stored_hash.startswith("$argon2"):
         try:
             ph.verify(stored_hash, password)
-            return True, False
+            # Also rehash if the Argon2 parameters (memory, iterations, etc.)
+            # have been updated since this hash was generated.
+            upgrade = ph.check_needs_rehash(stored_hash)
+            return True, upgrade
         except VerifyMismatchError:
             return False, False
 

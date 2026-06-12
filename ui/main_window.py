@@ -15,7 +15,7 @@ from ui.pages.usb_interface import UsbInterface
 from ui.pages.settings_interface import SettingsInterface
 from core.config import CONFIG_DIR
 from ui.password_dialog import PasswordInputWithStrength
-from PyQt6.QtWidgets import QMessageBox, QInputDialog
+from PyQt6.QtWidgets import QMessageBox
 from core.i18n import t
 
 class MainWindow(FluentWindow):
@@ -111,20 +111,19 @@ class MainWindow(FluentWindow):
         self.config.remove_group(gid)
         self.refresh()
 
-    def _add_usb(self, serial, label):
-        self.config.add_usb_key(serial, label)
+    def _add_usb(self, serial: str, label: str) -> None:
+        self.config.add_usb_to_whitelist(serial, label)
         self.refresh()
 
-    def _remove_usb(self, serial):
-        self.config.remove_usb_key(serial)
+    def _remove_usb(self, serial: str) -> None:
+        self.config.remove_usb_from_whitelist(serial)
         self.refresh()
 
-    def _restart_remote_server(self):
-        """Called by settings when toggling remote server"""
-        from main import get_app
-        app = get_app()
-        if hasattr(app, "_toggle_remote_server"):
-            app._toggle_remote_server(True)
+    def _restart_remote_server(self) -> None:
+        """Called by settings when toggling the remote lock server."""
+        if self.controller is not None:
+            # Delegate to the controller which owns the server lifecycle.
+            self.controller._check_settings_update()
 
     def _emergency_lock_signal(self):
         if hasattr(self, "_emergency_lock_cb") and self._emergency_lock_cb:

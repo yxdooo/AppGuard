@@ -8,7 +8,7 @@ import json
 import subprocess
 
 from PyQt6.QtWidgets import QApplication, QSystemTrayIcon, QMenu, QMessageBox
-from PyQt6.QtGui import QIcon, QPixmap, QPainter, QColor, QBrush
+from PyQt6.QtGui import QIcon, QPixmap, QPainter, QColor, QBrush, QPen
 from PyQt6.QtCore import Qt, QTimer, QObject, pyqtSlot
 
 from core.config import Config
@@ -32,7 +32,6 @@ def _make_icon(color: str, alert: bool = False) -> QIcon:
     p.drawEllipse(4, 4, 56, 56)
     p.setBrush(QBrush(QColor("white")))
     p.drawRoundedRect(20, 32, 24, 18, 4, 4)
-    from PyQt6.QtGui import QPen
     p.setPen(QPen(QColor("white"), 4, Qt.PenStyle.SolidLine))
     p.setBrush(Qt.BrushStyle.NoBrush)
     p.drawArc(22, 20, 20, 20, 0, 180 * 16)
@@ -46,10 +45,10 @@ def _make_icon(color: str, alert: bool = False) -> QIcon:
 
 class AppGuardController(QObject):
 
-    def __init__(self, app: QApplication):
+    def __init__(self, app: QApplication, config: "Config | None" = None):
         super().__init__()
         self.app = app
-        self.config = Config()
+        self.config = config if config is not None else Config()
         self.main_window = None
         self.usb_available = False
         self._alert_count = 0
@@ -79,11 +78,14 @@ class AppGuardController(QObject):
         self.hotkey_mgr = HotkeyManager()
         self.perf_monitor = PerformanceMonitor(self.guard)
         
-        # Uzaktan Kilit Sunucusu
+        # Remote lock server
         self.remote_server = None
         if self.config.get_setting("remote_lock_enabled", False):
             token = self._get_remote_token()
-            self.remote_server = RemoteLockServer(auth_token=token, port=8080)
+            self.remote_server = RemoteLockServer(
+                auth_token=token,
+                port=self.config.get_setting("remote_lock_port", 8080),
+            )
             self.remote_server.signals.lock_requested.connect(self._emergency_lock)
         
         # Sistem tepsisi
@@ -161,6 +163,11 @@ class AppGuardController(QObject):
         if dlg.exec() != dlg.DialogCode.Accepted:
             return
 
+        # Cache the verified plaintext password on the config object for the
+        # duration of this session so the encrypted notepad can derive its key
+        # from the raw password rather than from the stored hash.
+        self.config._session_master_pw = dlg.get_password()
+
         if not self.main_window:
             self.main_window = MainWindow(self.config, controller=self)
             # Bind emergency lock callback
@@ -188,9 +195,8 @@ class AppGuardController(QObject):
 
         if dlg.exec() == dlg.DialogCode.Accepted:
             exe_name = os.path.basename(exe_path).lower()
-            # Oturum boyunca bu exe'ye izin ver.
-            # Multi-process apps like Chrome/Discord won't be caught again.
-            # Only emergency lock or screen lock resets this permission.
+            # Grant session permission so multi-process apps (Chrome, Discord)
+            # are not re-prompted until emergency lock or screen lock.
             self.guard.session_allow_exe(exe_name)
             try:
                 cmdline = json.loads(cmdline_json)
@@ -199,7 +205,7 @@ class AppGuardController(QObject):
                     proc = subprocess.Popen(cmdline, cwd=cwd)
                     self.guard.allow_pid(proc.pid)
             except Exception as exc:
-                self._on_notification("AppGuard", f"Hata: {exc}")
+                self._on_notification("AppGuard", f"Error: {exc}")
         # Remove from processing list on both cancel and success
         self.guard.release_exe(os.path.basename(exe_path).lower())
         self._stop_blink()
@@ -252,14 +258,13 @@ class AppGuardController(QObject):
 
     # ── Setting Updates ──────────────────────────────────────────────────
     def _check_settings_update(self):
-        # Hotkey bindings are now managed directly by UI calling controller.bind_hotkeys()
-        pass
-            
-        # Remote Server start/stop
+        """Called every 2 s to react to settings changes made in the UI."""
+        # Remote server: start/stop based on the current setting.
         remote_enabled = self.config.get_setting("remote_lock_enabled", False)
+        port = self.config.get_setting("remote_lock_port", 8080)
         if remote_enabled and not self.remote_server:
             token = self._get_remote_token()
-            self.remote_server = RemoteLockServer(auth_token=token, port=8080)
+            self.remote_server = RemoteLockServer(auth_token=token, port=port)
             self.remote_server.signals.lock_requested.connect(self._emergency_lock)
             self.remote_server.start()
         elif not remote_enabled and self.remote_server:
@@ -313,10 +318,10 @@ class AppGuardController(QObject):
         self.app.quit()
 
     def _get_remote_token(self) -> str:
+        import secrets as _secrets
         token = self.config.get_setting("remote_lock_token")
         if not token:
-            import secrets
-            token = secrets.token_urlsafe(16)
+            token = _secrets.token_urlsafe(16)
             self.config.set_setting("remote_lock_token", token)
         return token
 
@@ -327,6 +332,8 @@ def main():
     app.setQuitOnLastWindowClosed(False)
     app.setApplicationName("AppGuard")
 
+    # Create the single Config instance that is shared everywhere.
+    # AppGuardController will reuse it rather than creating its own.
     config = Config()
     set_lang(config.get_setting("language", "tr"))
     set_accent(config.get_setting("theme", "purple"))
@@ -337,7 +344,7 @@ def main():
         if setup.exec() != setup.DialogCode.Accepted:
             sys.exit(0)
 
-    ctrl = AppGuardController(app)
+    ctrl = AppGuardController(app, config=config)
     ctrl.start_services()
 
     if "--show-dashboard" in sys.argv:

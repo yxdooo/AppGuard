@@ -1,9 +1,9 @@
-"""
-ui/animations.py — Animated tools for UI (Ripple etc.)
+﻿"""
+ui/animations.py â€” Animated tools for UI (Ripple etc.)
 """
 from PyQt6.QtWidgets import QPushButton
 from PyQt6.QtCore import Qt, QPropertyAnimation, pyqtProperty, QPoint, QRect, QEasingCurve, pyqtSignal, QTimer
-from PyQt6.QtGui import QPainter, QColor, QBrush, QPen
+from PyQt6.QtGui import QPainter, QColor, QBrush
 
 
 class RippleButton(QPushButton):
@@ -58,3 +58,4 @@ class SidebarBtn(QPushButton):
         self.setFixedHeight(48)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         # Style will be applied via qss
+

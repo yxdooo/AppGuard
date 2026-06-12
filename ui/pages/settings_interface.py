@@ -1,5 +1,8 @@
 import os
-from PyQt6.QtWidgets import QWidget, QVBoxLayout, QFileDialog, QMessageBox
+import sys
+import secrets as _secrets
+from PyQt6.QtWidgets import QWidget, QVBoxLayout, QFileDialog, QMessageBox, QDialog, QLabel
+from PyQt6.QtGui import QPixmap
 from PyQt6.QtCore import Qt, pyqtSignal
 from qfluentwidgets import (
     ScrollArea, SubtitleLabel, SwitchSettingCard, FluentIcon as FIF,
@@ -11,8 +14,10 @@ from ui.password_dialog import PasswordInputWithStrength
 from core.i18n import t
 
 class SimpleComboBoxSettingCard(SettingCard):
-    def __init__(self, icon, title, content=None, texts=[], parent=None):
+    def __init__(self, icon, title, content=None, texts=None, parent=None):
         super().__init__(icon, title, content, parent)
+        if texts is None:
+            texts = []
         self.comboBox = ComboBox(self)
         self.comboBox.addItems(texts)
         self.hBoxLayout.addWidget(self.comboBox, 0, Qt.AlignmentFlag.AlignRight)
@@ -167,49 +172,61 @@ class SettingsInterface(ScrollArea):
     def _toggle_guardian(self, state):
         self.config.set_setting("guardian_enabled", bool(state))
 
-    def _toggle_remote_lock(self, state):
+    def _toggle_remote_lock(self, state: bool) -> None:
         self.config.set_setting("remote_lock_enabled", bool(state))
-        if state and self.main_window.remote_server is None:
+        # Delegate server lifecycle to the controller.
+        if self.main_window.controller is not None:
             self.main_window._restart_remote_server()
             
-    def _show_qr(self):
+    def _show_qr(self) -> None:
         from core.remote_lock import get_local_ip, generate_qr_code
-        from PyQt6.QtWidgets import QDialog, QLabel
-        from PyQt6.QtGui import QPixmap
-        
+
         ip = get_local_ip()
         token = self.config.get_setting("remote_lock_token")
         if not token:
-            import secrets
-            token = secrets.token_urlsafe(16)
+            token = _secrets.token_urlsafe(16)
             self.config.set_setting("remote_lock_token", token)
-            
-        generate_qr_code(ip, 8080, token, self.main_window.qr_path)
-        
+
+        # Read port from config so it matches the running server.
+        port = self.config.get_setting("remote_lock_port", 8080)
+        generate_qr_code(ip, port, token, self.main_window.qr_path)
+
         dlg = QDialog(self)
         dlg.setWindowTitle(t("scan_phone"))
         lay = QVBoxLayout(dlg)
         lbl = QLabel()
         lbl.setPixmap(QPixmap(self.main_window.qr_path))
         lay.addWidget(lbl)
-        
-        info = QLabel(f"{t('same_network')}\n{ip}:8080")
+
+        info = QLabel(f"{t('same_network')}\n{ip}:{port}")
         info.setAlignment(Qt.AlignmentFlag.AlignCenter)
         lay.addWidget(info)
         dlg.exec()
 
-    def _toggle_startup(self, state):
-        import winreg
+    def _toggle_startup(self, state: bool) -> None:
+        try:
+            import winreg
+        except ImportError:
+            QMessageBox.warning(self, "Error", "Startup with Windows is only supported on Windows.")
+            return
         key_path = r"Software\Microsoft\Windows\CurrentVersion\Run"
         app_name = "AppGuard"
         try:
             key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path, 0, winreg.KEY_SET_VALUE)
             if state:
-                import sys
-                exe = sys.executable.replace("python.exe", "pythonw.exe")
-                script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "main.py")
-                script = os.path.normpath(script)
-                winreg.SetValueEx(key, app_name, 0, winreg.REG_SZ, f'"{exe}" "{script}"')
+                # Support both PyInstaller bundles (.exe) and plain Python.
+                if getattr(sys, "frozen", False):
+                    # Running as a bundled executable.
+                    exe_cmd = f'"{sys.executable}"'
+                else:
+                    # Running from source: prefer pythonw.exe to suppress the
+                    # console window. Fall back to whatever interpreter is active.
+                    pythonw = sys.executable.replace("python.exe", "pythonw.exe")
+                    script = os.path.normpath(
+                        os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "main.py")
+                    )
+                    exe_cmd = f'"{pythonw}" "{script}"'
+                winreg.SetValueEx(key, app_name, 0, winreg.REG_SZ, exe_cmd)
             else:
                 try:
                     winreg.DeleteValue(key, app_name)
@@ -232,19 +249,27 @@ class SettingsInterface(ScrollArea):
             else:
                 QMessageBox.warning(self, t("error_title"), "Backup failed.")
 
-    def _restore(self):
+    def _restore(self) -> None:
         path, _ = QFileDialog.getOpenFileName(self, "Open", "", "Backup (*.agbackup)")
-        if not path: return
-        
+        if not path:
+            return
+
         dlg = PasswordInputWithStrength(t("backup_section"), "Backup Password:", parent=self)
-        if dlg.exec() != dlg.DialogCode.Accepted: return
+        if dlg.exec() != dlg.DialogCode.Accepted:
+            return
         pw = dlg.get_password()
-        
+
         data = restore_backup(pw, path)
         if data:
             self.config.data = data
             self.config.save()
-            QMessageBox.information(self, t("success_title"), "Restored. Please restart the application.")
-            self.main_window.close()
+            QMessageBox.information(
+                self, t("success_title"),
+                "Restore successful. The application will now quit.\n"
+                "Please relaunch AppGuard for the changes to take effect.",
+            )
+            # Quit the entire application so all services are restarted cleanly.
+            from PyQt6.QtWidgets import QApplication
+            QApplication.instance().quit()
         else:
             QMessageBox.warning(self, t("error_title"), "Wrong password or corrupted file.")

@@ -27,9 +27,18 @@ def create_backup(data: dict, password: str, filepath: str) -> bool:
         raw_data = json.dumps(data, ensure_ascii=False).encode('utf-8')
         encrypted = encrypt_data(raw_data, key)
         
-        # File format: salt (16 bytes) + encrypted data
-        with open(filepath, 'wb') as file:
-            file.write(salt + encrypted)
+        # Atomic write: salt (16 bytes) + encrypted data
+        tmp = filepath + ".tmp"
+        try:
+            with open(tmp, 'wb') as file:
+                file.write(salt + encrypted)
+            os.replace(tmp, filepath)
+        except Exception:
+            try:
+                os.remove(tmp)
+            except OSError:
+                pass
+            raise
         return True
     except Exception as e:
         print(f"Backup error: {e}")

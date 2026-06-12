@@ -1,4 +1,4 @@
-"""
+﻿"""
 Core background service responsible for monitoring and blocking processes.
 
 Permission Hierarchy:
@@ -12,7 +12,6 @@ import os
 import subprocess
 import threading
 import time
-from typing import Set, Dict
 
 import psutil
 from PyQt6.QtCore import QObject, pyqtSignal
@@ -51,31 +50,30 @@ class GuardService(threading.Thread):
         self._active_blocks: Dict[str, threading.Event] = {}
 
         self._lock = threading.Lock()
-        self._interval = 0.25  # 250ms — fast catch
+        self._interval = 0.25  # 250ms â€” fast catch
 
-    # ── External API ─────────────────────────────────────────────────────
+    # â”€â”€ External API â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     def set_interval(self, interval: float):
         """Used by the performance monitor to adjust scan frequency."""
         with self._lock:
             self._interval = interval
 
-    def allow_pid(self, pid: int):
-        """Belirli bir PID'e izin ver."""
+    def allow_pid(self, pid: int) -> None:
+        """Grant a specific PID permission to run."""
         with self._lock:
             self._allowed_pids.add(pid)
 
-    def session_allow_exe(self, exe_name: str):
+    def session_allow_exe(self, exe_name: str) -> None:
         """
         Give SESSION-BASED permission to exe name.
         Called after user verifies password.
         In multi-process apps like Chrome, Discord
         completely prevents the next password prompt.
-        Sadece clear_all_pids() (acil kilit / ekran kilidi) 
+        Only clear_all_pids() (emergency lock / screen lock) resets this.
         """
         name = exe_name.lower()
         with self._lock:
-            import time
             self._session_allowed_exes[name] = time.time()
         # Stop active blocker (dialog closing, no more killing)
         self._stop_active_block(name)
@@ -109,13 +107,13 @@ class GuardService(threading.Thread):
         for name in list(self._active_blocks.keys()):
             self._stop_active_block(name)
 
-    def deauth_exe(self, exe_name: str):
-        """Belirli bir exe'nin oturum iznini iptal et (manuel kilit)."""
+    def deauth_exe(self, exe_name: str) -> None:
+        """Revoke session permission for a specific exe (manual lock)."""
         with self._lock:
             self._session_allowed_exes.pop(exe_name.lower(), None)
 
-    def get_session_allowed(self) -> Set[str]:
-        """Oturum boyunca izin verilen exe'lerin listesi."""
+    def get_session_allowed(self) -> set[str]:
+        """Return the set of exe names allowed for the current session."""
         with self._lock:
             return set(self._session_allowed_exes.keys())
 
@@ -124,15 +122,15 @@ class GuardService(threading.Thread):
         for name in list(self._active_blocks.keys()):
             self._stop_active_block(name)
 
-    # ── Kill Helpers ─────────────────────────────────────────────────────
+    # â”€â”€ Kill Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-    def _kill_process(self, proc) -> bool:
+    def _kill_process(self, proc: psutil.Process) -> bool:
         """
         Reliably kill the process.
-        If psutil.kill() fails, uses taskkill /f /pid /t fallback.
+        If psutil.kill() fails, falls back to taskkill /f /pid /t.
         """
         pid = proc.pid
-        # 1. psutil dene
+        # 1. Try psutil first
         try:
             proc.kill()
             try:
@@ -158,7 +156,7 @@ class GuardService(threading.Thread):
         except Exception:
             return False
 
-    def _kill_by_name(self, exe_name: str):
+    def _kill_by_name(self, exe_name: str) -> None:
         """Kill all unauthorized processes with the specified exe name."""
         for proc in psutil.process_iter(["pid", "name"]):
             try:
@@ -166,48 +164,53 @@ class GuardService(threading.Thread):
                     continue
                 pid = proc.info["pid"]
                 with self._lock:
-                    # Oturum izni varsa dokunma
+                    # If the session granted permission, leave all instances alone.
                     if exe_name in self._session_allowed_exes:
-                        return  # All these exes are free, exit early
+                        return
                     if pid in self._allowed_pids:
                         continue
                 self._kill_process(proc)
             except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
                 pass
 
-    # ── Active Blocker ───────────────────────────────────────────────────
+    # â”€â”€ Active Blocker â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-    def _start_active_block(self, exe_name: str):
+    def _start_active_block(self, exe_name: str) -> None:
         """
-        Thread continuously killing exe while dialog is open.
-        App cannot run even if user does not enter password.
+        Start a daemon thread that continuously kills *exe_name* while the
+        password dialog is open, preventing the app from sneaking through.
         """
-        if exe_name in self._active_blocks:
-            return  # Already running
+        with self._lock:
+            # Check-then-act under the lock to prevent two threads from
+            # starting duplicate blockers for the same exe.
+            if exe_name in self._active_blocks:
+                return
+            stop_event = threading.Event()
+            self._active_blocks[exe_name] = stop_event
 
-        stop_event = threading.Event()
-        self._active_blocks[exe_name] = stop_event
-
-        def _blocker():
+        def _scan_and_kill_run():
             while not stop_event.is_set():
-                # Stop if session is allowed
                 with self._lock:
                     if exe_name in self._session_allowed_exes:
                         break
                 self._kill_by_name(exe_name)
                 stop_event.wait(0.25)
 
-        t = threading.Thread(target=_blocker, daemon=True, name=f"Blocker-{exe_name}")
-        t.start()
+        blocker = threading.Thread(
+            target=_scan_and_kill_run,
+            daemon=True,
+            name=f"Blocker-{exe_name}",
+        )
+        blocker.start()
 
     def _stop_active_block(self, exe_name: str):
         event = self._active_blocks.pop(exe_name, None)
         if event:
             event.set()
 
-    # ── Main Loop ────────────────────────────────────────────────────────
+    # â”€â”€ Main Loop â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-    def run(self):
+    def run(self) -> None:
         while self._running:
             try:
                 self._scan()
@@ -242,7 +245,6 @@ class GuardService(threading.Thread):
             return
 
         running_names = {(p.info["name"] or "").lower() for p in procs}
-        import time
         with self._lock:
             to_remove = set()
             for exe, grant_time in self._session_allowed_exes.items():
@@ -271,9 +273,8 @@ class GuardService(threading.Thread):
                     # 3. Is dialog already open?
                     if pname in self._processing:
                         continue
-                    # New catch -> process it
+                    # New process caught â€” begin blocking and show dialog.
                     self._processing.add(pname)
-                    open('guard_debug.log', 'a').write(f'MATCHED {pname}\n')
 
                 # Find the best match
                 candidates = lookup[pname]
@@ -297,8 +298,8 @@ class GuardService(threading.Thread):
 
                 # 3. Notify user and prompt for password
                 self.sig.show_notification.emit(
-                    "🛡️ AppGuard",
-                    f'"{display_name}" attempted to launch — password required.',
+                    "ğŸ›¡ï¸ AppGuard",
+                    f'"{display_name}" attempted to launch â€” password required.',
                 )
                 self.sig.show_password_dialog.emit(
                     app_id, auth_id, display_name, pexe,
@@ -331,3 +332,4 @@ class GuardService(threading.Thread):
                     return app_id, app
 
         return candidates[0]
+

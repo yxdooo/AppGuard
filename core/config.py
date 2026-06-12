@@ -5,7 +5,7 @@ Passwords, lock status, USB whitelist, groups and app settings.
 import json
 import os
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from core.crypto import hash_password, verify_password, get_machine_key, encrypt_data, decrypt_data
@@ -63,7 +63,7 @@ class Config:
                 return json.loads(decrypted.decode("utf-8"))
             except Exception as e:
                 import traceback
-                print(f"Sifreli config yuklenemedi: {e}\n{traceback.format_exc()}")
+                print(f"Encrypted config could not be loaded: {e}\n{traceback.format_exc()}")
         
         # 2. Is there a legacy plaintext config? (Auto Migration)
         if CONFIG_FILE.exists():
@@ -75,11 +75,17 @@ class Config:
                 self.data = data
                 self.save()
                 
-                # Delete old plaintext file for security (to protect privacy)
+                # Delete old plaintext file after migrating to encrypted storage.
+                # Failure is NOT silently ignored — a plaintext config left on disk
+                # is a security risk and the user should be informed.
                 try:
                     os.remove(CONFIG_FILE)
-                except Exception:
-                    pass
+                except OSError as exc:
+                    print(
+                        f"[AppGuard] WARNING: Could not delete plaintext config file "
+                        f"'{CONFIG_FILE}': {exc}. "
+                        "Please delete it manually to protect your data."
+                    )
                     
                 return data
             except Exception:
@@ -87,16 +93,27 @@ class Config:
                 
         return _default()
 
-    def save(self):
+    def save(self) -> None:
         try:
             key = get_machine_key(str(KEY_FILE))
             raw_data = json.dumps(self.data, ensure_ascii=False).encode("utf-8")
             encrypted = encrypt_data(raw_data, key)
-            
-            with open(ENC_CONFIG_FILE, "wb") as f:
-                f.write(encrypted)
+
+            # Atomic write: write to temp then replace so a crash mid-write
+            # cannot corrupt the only copy of the config.
+            tmp = str(ENC_CONFIG_FILE) + ".tmp"
+            try:
+                with open(tmp, "wb") as f:
+                    f.write(encrypted)
+                os.replace(tmp, str(ENC_CONFIG_FILE))
+            except Exception:
+                try:
+                    os.remove(tmp)
+                except OSError:
+                    pass
+                raise
         except Exception as e:
-            print(f"Config kaydedilemedi: {e}")
+            print(f"Config could not be saved: {e}")
 
     # ── Master Password ──────────────────────────────────────────────────
     def has_master_password(self) -> bool:
@@ -170,47 +187,73 @@ class Config:
                     "failed_attempts": 0, "lockout_until": None, "usb_only_mode": False})
         self.save()
 
+    # ── Lockout Helpers (shared) ──────────────────────────────────────────
+
+    @staticmethod
+    def _utcnow() -> datetime:
+        """Current UTC time (timezone-aware). Avoids timezone-naive datetime."""
+        return datetime.now(tz=timezone.utc)
+
+    def _apply_lockout(self, record: dict) -> None:
+        """Increment failed_attempts and set lockout_until / usb_only_mode."""
+        record["failed_attempts"] = record.get("failed_attempts", 0) + 1
+        n = record["failed_attempts"]
+        now = self._utcnow()
+        if n >= 10:
+            record["usb_only_mode"] = True
+            record["lockout_until"] = None  # clear stale timer
+        elif n >= 9:
+            record["lockout_until"] = (now + timedelta(minutes=30)).isoformat()
+        elif n >= 6:
+            record["lockout_until"] = (now + timedelta(minutes=10)).isoformat()
+        elif n >= 3:
+            record["lockout_until"] = (now + timedelta(minutes=2)).isoformat()
+
+    def _get_lockout_status(self, record: dict) -> dict:
+        """Return lockout status dict for *record* (app or group)."""
+        n = record.get("failed_attempts", 0)
+        if record.get("usb_only_mode"):
+            return {"locked": True, "reason": "usb_only", "remaining_seconds": 0, "attempts": n}
+        lu = record.get("lockout_until")
+        if lu:
+            try:
+                dt = datetime.fromisoformat(lu)
+                # Handle both aware and naive stored timestamps gracefully.
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                rem = (dt - self._utcnow()).total_seconds()
+            except ValueError:
+                rem = 0  # Malformed timestamp — treat as expired.
+            if rem > 0:
+                return {"locked": True, "reason": "timer", "remaining_seconds": int(rem), "attempts": n}
+            record["lockout_until"] = None
+            self.save()
+        return {"locked": False, "reason": None, "remaining_seconds": 0, "attempts": n}
+
     # ── Lock Management (App) ────────────────────────────────────────────
-    def record_failed_attempt(self, app_id: str):
+    def record_failed_attempt(self, app_id: str) -> None:
         app = self.data["protected_apps"].get(app_id)
         if not app:
             return
-        app["failed_attempts"] = app.get("failed_attempts", 0) + 1
-        n = app["failed_attempts"]
-        if n >= 10:
-            app["usb_only_mode"] = True
-        elif n >= 9:
-            app["lockout_until"] = (datetime.now() + timedelta(minutes=30)).isoformat()
-        elif n >= 6:
-            app["lockout_until"] = (datetime.now() + timedelta(minutes=10)).isoformat()
-        elif n >= 3:
-            app["lockout_until"] = (datetime.now() + timedelta(minutes=2)).isoformat()
+        self._apply_lockout(app)
         self.save()
 
-    def record_success(self, app_id: str):
+    def record_success(self, app_id: str) -> None:
         app = self.data["protected_apps"].get(app_id)
         if not app:
             return
-        app.update({"failed_attempts": 0, "lockout_until": None,
-                    "usb_only_mode": False, "last_accessed": datetime.now().isoformat()})
+        app.update({
+            "failed_attempts": 0, "lockout_until": None,
+            "usb_only_mode": False,
+            "last_accessed": self._utcnow().isoformat(),
+        })
         self.save()
 
     def get_lockout_status(self, app_id: str) -> dict:
         app = self.data["protected_apps"].get(app_id)
         if not app:
             return {"locked": False, "reason": None, "remaining_seconds": 0, "attempts": 0}
-        n = app.get("failed_attempts", 0)
-        if app.get("usb_only_mode"):
-            return {"locked": True, "reason": "usb_only", "remaining_seconds": 0, "attempts": n}
-        lu = app.get("lockout_until")
-        if lu:
-            dt = datetime.fromisoformat(lu)
-            rem = (dt - datetime.now()).total_seconds()
-            if rem > 0:
-                return {"locked": True, "reason": "timer", "remaining_seconds": int(rem), "attempts": n}
-            app["lockout_until"] = None
-            self.save()
-        return {"locked": False, "reason": None, "remaining_seconds": 0, "attempts": n}
+        return self._get_lockout_status(app)
 
     # ── Groups ───────────────────────────────────────────────────────────
     def add_group(self, name: str, pw: str, app_ids: list[str]) -> str:
@@ -261,36 +304,16 @@ class Config:
         g = self.data["groups"].get(gid)
         if not g:
             return {"locked": False, "reason": None, "remaining_seconds": 0, "attempts": 0}
-        n = g.get("failed_attempts", 0)
-        if g.get("usb_only_mode"):
-            return {"locked": True, "reason": "usb_only", "remaining_seconds": 0, "attempts": n}
-        lu = g.get("lockout_until")
-        if lu:
-            dt = datetime.fromisoformat(lu)
-            rem = (dt - datetime.now()).total_seconds()
-            if rem > 0:
-                return {"locked": True, "reason": "timer", "remaining_seconds": int(rem), "attempts": n}
-            g["lockout_until"] = None
-            self.save()
-        return {"locked": False, "reason": None, "remaining_seconds": 0, "attempts": n}
+        return self._get_lockout_status(g)
 
-    def record_group_failed(self, gid: str):
+    def record_group_failed(self, gid: str) -> None:
         g = self.data["groups"].get(gid)
         if not g:
             return
-        g["failed_attempts"] = g.get("failed_attempts", 0) + 1
-        n = g["failed_attempts"]
-        if n >= 10:
-            g["usb_only_mode"] = True
-        elif n >= 9:
-            g["lockout_until"] = (datetime.now() + timedelta(minutes=30)).isoformat()
-        elif n >= 6:
-            g["lockout_until"] = (datetime.now() + timedelta(minutes=10)).isoformat()
-        elif n >= 3:
-            g["lockout_until"] = (datetime.now() + timedelta(minutes=2)).isoformat()
+        self._apply_lockout(g)
         self.save()
 
-    def record_group_success(self, gid: str):
+    def record_group_success(self, gid: str) -> None:
         g = self.data["groups"].get(gid)
         if g:
             g.update({"failed_attempts": 0, "lockout_until": None, "usb_only_mode": False})

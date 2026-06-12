@@ -1,5 +1,5 @@
-import os
-from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QInputDialog
+﻿from PyQt6.QtWidgets import QWidget, QListWidgetItem
+from PyQt6.QtCore import QSize, QVBoxLayout, QHBoxLayout, QInputDialog
 from PyQt6.QtCore import Qt, pyqtSignal
 from qfluentwidgets import (
     ScrollArea, SubtitleLabel, PrimaryPushButton, ListWidget, FluentIcon as FIF,
@@ -48,10 +48,8 @@ class GroupsInterface(ScrollArea):
     def load_groups(self, groups_dict):
         self.groupList.clear()
         for gid, g in groups_dict.items():
-            from PyQt6.QtWidgets import QListWidgetItem
-            from PyQt6.QtCore import QSize
             n = len(g.get("app_ids", []))
-            item = QListWidgetItem(f"  🗂  {g['name']}  ({n} apps)")
+            item = QListWidgetItem(f"  ğŸ—‚  {g['name']}  ({n} apps)")
             item.setData(Qt.ItemDataRole.UserRole, gid)
             item.setSizeHint(QSize(0, 46))
             self.groupList.addItem(item)
@@ -77,3 +75,4 @@ class GroupsInterface(ScrollArea):
         
         menu.addAction(delete_action)
         menu.exec(self.groupList.mapToGlobal(pos))
+

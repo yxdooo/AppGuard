@@ -1,5 +1,5 @@
 """
-core/session_monitor.py — Windows ekran kilidi tespiti
+core/session_monitor.py — Windows screen lock detection.
 Checks lock status every 2 seconds via OpenInputDesktop method.
 """
 import ctypes
@@ -14,11 +14,11 @@ class SessionMonitor(threading.Thread):
     OpenInputDesktop API: call fails when locked.
     """
 
-    def __init__(self, on_lock: Callable, on_unlock: Callable):
+    def __init__(self, on_lock: Callable[[], None], on_unlock: Callable[[], None]) -> None:
         super().__init__(daemon=True, name="SessionMonitor")
         self.on_lock = on_lock
         self.on_unlock = on_unlock
-        self._running = True
+        self._stop_event = threading.Event()
         self._was_locked = self._check_locked()
 
     @staticmethod
@@ -30,8 +30,8 @@ class SessionMonitor(threading.Thread):
             return False
         return True  # Desktop could not be opened = locked
 
-    def run(self):
-        while self._running:
+    def run(self) -> None:
+        while not self._stop_event.is_set():
             try:
                 locked = self._check_locked()
                 if locked and not self._was_locked:
@@ -41,7 +41,9 @@ class SessionMonitor(threading.Thread):
                 self._was_locked = locked
             except Exception:
                 pass
-            time.sleep(2)
+            # Use Event.wait() so stop() wakes us immediately.
+            self._stop_event.wait(2)
 
-    def stop(self):
-        self._running = False
+    def stop(self) -> None:
+        """Signal the monitor to stop; returns immediately."""
+        self._stop_event.set()

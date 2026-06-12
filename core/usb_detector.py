@@ -48,17 +48,17 @@ def get_removable_drives() -> list[dict]:
 class USBMonitor(threading.Thread):
     """Monitors USB plug/unplug events in the background."""
 
-    def __init__(self, on_connect: Callable[[dict], None], on_disconnect: Callable[[str], None]):
+    def __init__(self, on_connect: Callable[[dict], None], on_disconnect: Callable[[str], None]) -> None:
         super().__init__(daemon=True, name="USBMonitor")
         self.on_connect = on_connect
         self.on_disconnect = on_disconnect
-        self._running = True
+        self._stop_event = threading.Event()
         self._known: dict[str, dict] = {
             d["serial"]: d for d in get_removable_drives()
         }
 
-    def run(self):
-        while self._running:
+    def run(self) -> None:
+        while not self._stop_event.is_set():
             try:
                 current = {d["serial"]: d for d in get_removable_drives()}
 
@@ -73,7 +73,8 @@ class USBMonitor(threading.Thread):
                 self._known = current
             except Exception:
                 pass
-            time.sleep(1.5)
+            self._stop_event.wait(1.5)
 
-    def stop(self):
-        self._running = False
+    def stop(self) -> None:
+        """Signal the monitor to stop; returns immediately."""
+        self._stop_event.set()

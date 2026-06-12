@@ -1,6 +1,6 @@
 import os
-from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QFileDialog
-from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QFileDialog, QListWidgetItem
+from PyQt6.QtCore import Qt, QSize, pyqtSignal
 from qfluentwidgets import (
     ScrollArea, SubtitleLabel, CardWidget, BodyLabel, 
     PrimaryPushButton, ListWidget, FluentIcon as FIF,
@@ -49,11 +49,9 @@ class AppLockInterface(ScrollArea):
         self.appList.customContextMenuRequested.connect(self._show_context_menu)
         self.vBoxLayout.addWidget(self.appList)
 
-    def load_apps(self, apps_dict):
+    def load_apps(self, apps_dict: dict) -> None:
         self.appList.clear()
         for app_id, app in apps_dict.items():
-            from PyQt6.QtWidgets import QListWidgetItem
-            from PyQt6.QtCore import QSize
             name = app.get("name", "?")
             exe = app.get("exe_path", "")
             item = QListWidgetItem(f"  {name}\n  {os.path.basename(exe)}")
@@ -62,10 +60,15 @@ class AppLockInterface(ScrollArea):
             item.setSizeHint(QSize(0, 56))
             self.appList.addItem(item)
 
-    def _on_add_app(self):
-        path, _ = QFileDialog.getOpenFileName(self, "Select Application", "C:\\Program Files", "Executable (*.exe)")
+    def _on_add_app(self) -> None:
+        # Start from Program Files if it exists, otherwise the user's home dir.
+        start_dir = os.environ.get("ProgramFiles", os.path.expanduser("~"))
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Select Application", start_dir, "Executable (*.exe *.EXE)"
+        )
         if path:
-            name = os.path.basename(path).replace(".exe", "")
+            # Use splitext so .EXE / .Exe variants are handled correctly.
+            name = os.path.splitext(os.path.basename(path))[0]
             self.app_added.emit(name, path)
 
     def _on_item_clicked(self, item):
