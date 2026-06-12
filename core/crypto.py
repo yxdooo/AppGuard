@@ -21,13 +21,6 @@ ph = PasswordHasher()
 # replayed in a different context (confused-deputy / splice attack).
 _AAD = b"appguard-config-v1"
 
-# ---------------------------------------------------------------------------
-# Internals
-# ---------------------------------------------------------------------------
-
-def _generate_salt() -> str:
-    """Generate a cryptographically-random hex salt (internal use only)."""
-    return secrets.token_hex(32)
 
 
 # ---------------------------------------------------------------------------
@@ -134,8 +127,20 @@ def get_machine_key(key_path: str) -> bytes:
     key = os.urandom(32)
     enc_key = win32crypt.CryptProtectData(key, "AppGuard Config Key", entropy, None, None, 0)
 
-    with open(key_path, "wb") as f:
-        f.write(enc_key)
+    # Write to a temp file first, then atomically replace the target so that a
+    # mid-write crash cannot leave a truncated / corrupt key file behind.
+    tmp_path = key_path + ".tmp"
+    try:
+        with open(tmp_path, "wb") as f:
+            f.write(enc_key)
+        os.replace(tmp_path, key_path)  # atomic on same filesystem (POSIX + Windows)
+    except Exception:
+        # Clean up orphaned temp file if the replace itself failed.
+        try:
+            os.remove(tmp_path)
+        except OSError:
+            pass
+        raise
 
     # Mark file as hidden so it does not clutter the config directory.
     try:
