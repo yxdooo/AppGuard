@@ -8,7 +8,7 @@ import uuid
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from core.crypto import generate_salt, hash_password, verify_password, get_machine_key, encrypt_data, decrypt_data
+from core.crypto import hash_password, verify_password, get_machine_key, encrypt_data, decrypt_data
 
 CONFIG_DIR = Path(os.environ.get("APPDATA", ".")) / "AppGuard"
 CONFIG_FILE = CONFIG_DIR / "config.json"
@@ -103,29 +103,27 @@ class Config:
         return self.data.get("master_password") is not None
 
     def set_master_password(self, pw: str):
-        salt = generate_salt()
-        self.data["master_password"] = {"hash": hash_password(pw, salt), "salt": salt}
+        # Salt is generated internally by Argon2; no external salt needed.
+        self.data["master_password"] = {"hash": hash_password(pw)}
         self.save()
 
     def verify_master_password(self, pw: str) -> bool:
         mp = self.data.get("master_password")
         if not mp:
             return True
-        # Automatic hash update (from SHA-256 to Argon2)
-        is_valid = verify_password(pw, mp["hash"], mp.get("salt"))
-        if is_valid and not mp["hash"].startswith("$argon2"):
+        is_valid, needs_rehash = verify_password(pw, mp["hash"], mp.get("salt"))
+        if is_valid and needs_rehash:
+            # Transparently migrate legacy SHA-256 hash to Argon2id.
             self.set_master_password(pw)
         return is_valid
 
     # ── Protected Apps ───────────────────────────────────────────────────
     def add_protected_app(self, exe_path: str, name: str, pw: str, hint: str = "") -> str:
         app_id = str(uuid.uuid4())
-        salt = generate_salt()
         self.data["protected_apps"][app_id] = {
             "exe_path": exe_path,
             "name": name,
-            "password_hash": hash_password(pw, salt),
-            "salt": salt,
+            "password_hash": hash_password(pw),
             "hint": hint,
             "enabled": True,
             "failed_attempts": 0,
@@ -159,8 +157,8 @@ class Config:
         app = self.data["protected_apps"].get(app_id)
         if not app:
             return False
-        is_valid = verify_password(pw, app["password_hash"], app.get("salt"))
-        if is_valid and not app["password_hash"].startswith("$argon2"):
+        is_valid, needs_rehash = verify_password(pw, app["password_hash"], app.get("salt"))
+        if is_valid and needs_rehash:
             self.set_app_password(app_id, pw)
         return is_valid
 
@@ -168,8 +166,7 @@ class Config:
         app = self.data["protected_apps"].get(app_id)
         if not app:
             return
-        salt = generate_salt()
-        app.update({"password_hash": hash_password(pw, salt), "salt": salt,
+        app.update({"password_hash": hash_password(pw),
                     "failed_attempts": 0, "lockout_until": None, "usb_only_mode": False})
         self.save()
 
@@ -218,11 +215,9 @@ class Config:
     # ── Groups ───────────────────────────────────────────────────────────
     def add_group(self, name: str, pw: str, app_ids: list[str]) -> str:
         gid = str(uuid.uuid4())
-        salt = generate_salt()
         self.data["groups"][gid] = {
             "name": name,
-            "password_hash": hash_password(pw, salt),
-            "salt": salt,
+            "password_hash": hash_password(pw),
             "app_ids": app_ids,
             "enabled": True,
             "failed_attempts": 0,
@@ -243,8 +238,7 @@ class Config:
         g = self.data["groups"].get(gid)
         if not g:
             return
-        salt = generate_salt()
-        g.update({"password_hash": hash_password(pw, salt), "salt": salt,
+        g.update({"password_hash": hash_password(pw),
                   "failed_attempts": 0, "lockout_until": None, "usb_only_mode": False})
         self.save()
 
@@ -258,8 +252,8 @@ class Config:
         g = self.data["groups"].get(gid)
         if not g:
             return False
-        is_valid = verify_password(pw, g["password_hash"], g.get("salt"))
-        if is_valid and not g["password_hash"].startswith("$argon2"):
+        is_valid, needs_rehash = verify_password(pw, g["password_hash"], g.get("salt"))
+        if is_valid and needs_rehash:
             self.set_group_password(gid, pw)
         return is_valid
 
