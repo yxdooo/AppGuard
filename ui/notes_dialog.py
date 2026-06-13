@@ -35,13 +35,16 @@ def _derive_notes_key(master_password: str) -> bytes:
     """
     Derive a 32-byte AES-256 key from *master_password* using HKDF-SHA256.
 
+    A fixed application-specific salt provides additional domain separation
+    beyond the info parameter, ensuring this key can never be confused with
+    a key derived for a different component of the application.
     The info parameter pins the key to the 'notes' context so that the same
     master password cannot be used to derive keys for other purposes.
     """
     return HKDF(
         algorithm=SHA256(),
         length=32,
-        salt=None,          # HKDF salt; None uses the all-zero default
+        salt=b"appguard-notes-hkdf-salt-v1",  # fixed application salt
         info=b"appguard-notes-v1",
         backend=default_backend(),
     ).derive(master_password.encode("utf-8"))
@@ -82,12 +85,13 @@ class NotesDialog(QDialog):
 
         btn_row = QHBoxLayout()
 
-        close_btn = QPushButton(t("btn_close") if "btn_close" in dir() else "Close")
+        # Use t() directly; it falls back to the key name if not translated.
+        close_btn = QPushButton(t("btn_close"))
         close_btn.setProperty("role", "secondary")
         close_btn.clicked.connect(self.reject)
         btn_row.addWidget(close_btn)
 
-        save_btn = QPushButton(t("btn_save") if "btn_save" in dir() else "Save")
+        save_btn = QPushButton(t("btn_save"))
         save_btn.clicked.connect(self._save_notes)
         btn_row.addWidget(save_btn)
 

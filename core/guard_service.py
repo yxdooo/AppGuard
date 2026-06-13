@@ -1,4 +1,4 @@
-﻿"""
+"""
 Core background service responsible for monitoring and blocking processes.
 
 Permission Hierarchy:
@@ -8,15 +8,19 @@ Permission Hierarchy:
   4. _active_blocks        : Threads continuously killing apps while dialog is open.
 """
 import json
+import logging
 import os
 import subprocess
 import threading
 import time
+import warnings
 
 import psutil
 from PyQt6.QtCore import QObject, pyqtSignal
 
 from core.config import Config
+
+log = logging.getLogger(__name__)
 
 
 class SignalBridge(QObject):
@@ -41,18 +45,19 @@ class GuardService(threading.Thread):
         self._session_allowed_exes: dict[str, float] = {}
 
         # Allow specific PIDs (backup, short-lived)
-        self._allowed_pids: Set[int] = set()
+        self._allowed_pids: set[int] = set()
 
         # Exes with currently open dialog (scan won't catch again)
-        self._processing: Set[str] = set()
+        self._processing: set[str] = set()
 
         # Kill threads running while dialog is open: exe -> stop_event
-        self._active_blocks: Dict[str, threading.Event] = {}
+        self._active_blocks: dict[str, threading.Event] = {}
 
         self._lock = threading.Lock()
-        self._interval = 0.25  # 250ms â€” fast catch
+        self._interval = 0.25  # 250 ms — fast catch
+        self._scan_count = 0   # used to throttle pid_exists cleanup
 
-    # â”€â”€ External API â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # ——————————————————————————————————————————————————————————————————————————
 
     def set_interval(self, interval: float):
         """Used by the performance monitor to adjust scan frequency."""
@@ -79,8 +84,13 @@ class GuardService(threading.Thread):
         self._stop_active_block(name)
 
     # Backward compatibility -> for old allow_exe calls
-    def allow_exe(self, exe_name: str, duration: float = 15.0):
-        """Grant session permission (duration is obsolete, session-based)."""
+    def allow_exe(self, exe_name: str, duration: float = 15.0) -> None:
+        """Deprecated: use session_allow_exe(). The duration parameter is ignored."""
+        warnings.warn(
+            "allow_exe() is deprecated; use session_allow_exe() instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         self.session_allow_exe(exe_name)
 
     def release_exe(self, exe_name: str):
@@ -96,7 +106,7 @@ class GuardService(threading.Thread):
         # Blocker already stopped if session_allow_exe was called
         self._stop_active_block(name)
 
-    def clear_all_pids(self):
+    def clear_all_pids(self) -> None:
         """
         Emergency lock or screen lock: reset all session permissions.
         Password will be asked again for every next protection attempt.
@@ -104,7 +114,9 @@ class GuardService(threading.Thread):
         with self._lock:
             self._allowed_pids.clear()
             self._session_allowed_exes.clear()
-        for name in list(self._active_blocks.keys()):
+            # Snapshot under the lock to avoid race with _start_active_block.
+            names = list(self._active_blocks.keys())
+        for name in names:
             self._stop_active_block(name)
 
     def deauth_exe(self, exe_name: str) -> None:
@@ -117,9 +129,13 @@ class GuardService(threading.Thread):
         with self._lock:
             return set(self._session_allowed_exes.keys())
 
-    def stop(self):
+    def stop(self) -> None:
+        """Signal the guard thread to stop and tear down all active blockers."""
         self._running = False
-        for name in list(self._active_blocks.keys()):
+        with self._lock:
+            # Snapshot under the lock to avoid race with _start_active_block.
+            names = list(self._active_blocks.keys())
+        for name in names:
             self._stop_active_block(name)
 
     # â”€â”€ Kill Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -203,8 +219,10 @@ class GuardService(threading.Thread):
         )
         blocker.start()
 
-    def _stop_active_block(self, exe_name: str):
-        event = self._active_blocks.pop(exe_name, None)
+    def _stop_active_block(self, exe_name: str) -> None:
+        """Signal the active blocker thread for *exe_name* to exit."""
+        with self._lock:
+            event = self._active_blocks.pop(exe_name, None)
         if event:
             event.set()
 
@@ -215,7 +233,9 @@ class GuardService(threading.Thread):
             try:
                 self._scan()
             except Exception:
-                pass
+                # Log unexpected errors so they are not silently lost;
+                # the guard keeps running after transient failures.
+                log.exception("GuardService _scan() raised an unexpected exception")
             time.sleep(self._interval)
 
     def _scan(self):
@@ -224,7 +244,7 @@ class GuardService(threading.Thread):
             return
 
         # {exe_basename_lower: [(app_id, app_data), ...]}
-        lookup: Dict[str, list] = {}
+        lookup: dict[str, list] = {}
         for app_id, app in protected.items():
             if not app.get("enabled", True) or not self.config.is_app_enabled_in_profile(app_id):
                 continue
@@ -235,9 +255,14 @@ class GuardService(threading.Thread):
         if not lookup:
             return
 
-        # Clear dead PIDs
-        with self._lock:
-            self._allowed_pids = {p for p in self._allowed_pids if psutil.pid_exists(p)}
+        # Clear dead PIDs every 20 scans (~5 s at 250 ms interval) to avoid
+        # holding the lock while calling psutil.pid_exists() for every PID.
+        self._scan_count += 1
+        if self._scan_count % 20 == 0:
+            with self._lock:
+                self._allowed_pids = {
+                    p for p in self._allowed_pids if psutil.pid_exists(p)
+                }
 
         try:
             procs = list(psutil.process_iter(["pid", "name", "exe"]))
@@ -328,7 +353,9 @@ class GuardService(threading.Thread):
             registered = app.get("exe_path", "").lower()
             if registered and exe_lower:
                 reg_dir = os.path.dirname(registered)
-                if reg_dir and reg_dir in exe_lower:
+                # Use startswith + separator to avoid false positives where
+                # one directory name is a prefix of another (e.g. /prog vs /programs).
+                if reg_dir and exe_lower.startswith(reg_dir + os.sep):
                     return app_id, app
 
         return candidates[0]

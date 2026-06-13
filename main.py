@@ -2,10 +2,17 @@
 main.py — AppGuard Pro Main Entry Point
 System tray, guard service, USB monitor, screen lock monitor, global hotkey, widget, performance monitor, remote lock.
 """
+import logging
 import sys
 import os
 import json
 import subprocess
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
 
 from PyQt6.QtWidgets import QApplication, QSystemTrayIcon, QMenu, QMessageBox
 from PyQt6.QtGui import QIcon, QPixmap, QPainter, QColor, QBrush, QPen
@@ -62,9 +69,9 @@ class AppGuardController(QObject):
         self.sig.show_password_dialog.connect(self._on_password_needed)
         self.sig.show_notification.connect(self._on_notification)
 
-        # Servisler
+        # Services
         self.guard = GuardService(self.config, self.sig)
-        
+
         self.usb_monitor = USBMonitor(
             on_connect=self._on_usb_connect,
             on_disconnect=self._on_usb_disconnect,
@@ -77,7 +84,7 @@ class AppGuardController(QObject):
 
         self.hotkey_mgr = HotkeyManager()
         self.perf_monitor = PerformanceMonitor(self.guard)
-        
+
         # Remote lock server
         self.remote_server = None
         if self.config.get_setting("remote_lock_enabled", False):
@@ -86,9 +93,17 @@ class AppGuardController(QObject):
                 auth_token=token,
                 port=self.config.get_setting("remote_lock_port", 8080),
             )
-            self.remote_server.signals.lock_requested.connect(self._emergency_lock)
-        
-        # Sistem tepsisi
+            self.remote_server.signals.lock_requested.connect(
+                self._emergency_lock, Qt.ConnectionType.QueuedConnection
+            )
+            self.remote_server.signals.server_error.connect(
+                lambda msg: self.tray.showMessage(
+                    "AppGuard — Remote Lock Error", msg,
+                    QSystemTrayIcon.MessageIcon.Warning, 5000,
+                )
+            )
+
+        # System tray
         self._normal_icon = _make_icon(get_accent_color())
         self._alert_icon  = _make_icon("#ef4444", alert=True)
         self.tray = QSystemTrayIcon()
@@ -97,7 +112,7 @@ class AppGuardController(QObject):
         self._setup_tray_menu()
         self.tray.show()
 
-        # Tepsi animasyon timer
+        # Tray animation timer
         self._blink_timer = QTimer(self)
         self._blink_timer.timeout.connect(self._blink_tray)
         self._blink_state = False
@@ -307,8 +322,9 @@ class AppGuardController(QObject):
         if self.remote_server:
             self.remote_server.start()
 
-    def _quit(self):
+    def _quit(self) -> None:
         self.guard.stop()
+        self.session_monitor.stop()  # was missing — would leave thread running
         self.usb_monitor.stop()
         self.perf_monitor.stop()
         if self.remote_server:
@@ -335,6 +351,9 @@ def main():
     # Create the single Config instance that is shared everywhere.
     # AppGuardController will reuse it rather than creating its own.
     config = Config()
+    # AppGuardController.__init__() already calls set_lang/set_accent when it
+    # reads config, so we only call them here for the setup dialog (which runs
+    # before the controller is created). No duplicate calls needed afterward.
     set_lang(config.get_setting("language", "tr"))
     set_accent(config.get_setting("theme", "purple"))
 

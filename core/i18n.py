@@ -1,6 +1,6 @@
 """
-core/i18n.py — Türkçe / İngilizce çeviri sistemi
-Kullanım: from core.i18n import t, set_lang
+core/i18n.py — Turkish / English translation system
+Usage: from core.i18n import t, set_lang
 """
 
 _STRINGS: dict[str, dict[str, str]] = {
@@ -11,10 +11,10 @@ _STRINGS: dict[str, dict[str, str]] = {
         "setup_desc": "Yönetim panelini korumak için bir master şifre belirleyin.\nBu şifre olmadan AppGuard ayarlarına erişilemez.",
         "setup_master_pw": "Master Şifre",
         "setup_confirm_pw": "Şifre Tekrar",
-        "setup_ph_master": "En az 4 karakter…",
+        "setup_ph_master": "En az 8 karakter…",
         "setup_ph_confirm": "Şifreyi tekrar girin…",
         "setup_btn_complete": "Kurulumu Tamamla  ✓",
-        "setup_err_min": "Şifre en az 4 karakter olmalı.",
+        "setup_err_min": "Şifre en az 8 karakter olmalı.",
         "setup_err_match": "Şifreler eşleşmiyor.",
         "setup_language_label": "Dil / Language",
         "setup_theme_label": "Renk Teması",
@@ -179,6 +179,8 @@ _STRINGS: dict[str, dict[str, str]] = {
         "confirm_title": "Onay",
         "error_title": "Hata",
         "success_title": "Başarılı",
+        "btn_close": "Kapat",
+        "btn_save": "Kaydet",
     },
     "en": {
         # Setup
@@ -187,10 +189,10 @@ _STRINGS: dict[str, dict[str, str]] = {
         "setup_desc": "Set a master password to protect the management panel.\nWithout this password, AppGuard settings cannot be accessed.",
         "setup_master_pw": "Master Password",
         "setup_confirm_pw": "Confirm Password",
-        "setup_ph_master": "At least 4 characters…",
+        "setup_ph_master": "At least 8 characters…",
         "setup_ph_confirm": "Re-enter password…",
         "setup_btn_complete": "Complete Setup  ✓",
-        "setup_err_min": "Password must be at least 4 characters.",
+        "setup_err_min": "Password must be at least 8 characters.",
         "setup_err_match": "Passwords do not match.",
         "setup_language_label": "Dil / Language",
         "setup_theme_label": "Color Theme",
@@ -355,6 +357,8 @@ _STRINGS: dict[str, dict[str, str]] = {
         "confirm_title": "Confirm",
         "error_title": "Error",
         "success_title": "Success",
+        "btn_close": "Close",
+        "btn_save": "Save",
     },
 }
 
@@ -379,5 +383,8 @@ def t(key: str, **kwargs) -> str:
         try:
             s = s.format(**kwargs)
         except Exception:
-            pass
+            import logging
+            logging.getLogger(__name__).warning(
+                "i18n: failed to format key '%s' with args %r", key, kwargs
+            )
     return s

@@ -109,12 +109,17 @@ class PasswordDialog(QDialog):
         self._timer.start(1000)
         self._center()
 
-    def _center(self):
+    def _center(self) -> None:
         from PyQt6.QtGui import QGuiApplication
-        geo = QGuiApplication.primaryScreen().availableGeometry()
+        screen = QGuiApplication.primaryScreen()
+        if screen is None:
+            return
+        geo = screen.availableGeometry()
         self.adjustSize()
-        self.move(geo.center().x() - self.width() // 2,
-                  geo.center().y() - self.height() // 2)
+        self.move(
+            geo.center().x() - self.width() // 2,
+            geo.center().y() - self.height() // 2,
+        )
                   
     def paintEvent(self, event):
         p = QPainter(self)
@@ -167,7 +172,8 @@ class PasswordDialog(QDialog):
         hdr.addLayout(col)
         hdr.addStretch()
 
-        # Hint button
+        # Hint button — shows hint only on explicit click (not auto-popup tooltip)
+        # to avoid revealing hints to casual observers.
         if not self.is_master and not self.is_group:
             app = self.config.get_protected_apps().get(self.auth_id, {})
             hint = app.get("hint", "")
@@ -175,7 +181,10 @@ class PasswordDialog(QDialog):
                 hint_btn = QPushButton("💡")
                 hint_btn.setProperty("role", "icon")
                 hint_btn.setFixedSize(32, 32)
-                hint_btn.setToolTip(f"Hint: {hint}")
+                hint_btn.clicked.connect(
+                    lambda: __import__("PyQt6.QtWidgets", fromlist=["QMessageBox"])
+                    .QMessageBox.information(self, "Password Hint", hint)
+                )
                 hdr.addWidget(hint_btn)
 
         lock_lbl = QLabel("🔒")
@@ -234,13 +243,18 @@ class PasswordDialog(QDialog):
 
     def _get_status(self) -> dict:
         if self.is_master:
-            return {"locked": False, "reason": None, "remaining_seconds": 0, "attempts": 0}
+            return self.config.get_master_lockout_status()
         if self.is_group:
             return self.config.get_group_lockout_status(self.auth_id)
         return self.config.get_lockout_status(self.auth_id)
 
-    def _update_status(self):
-        if self.is_master:
+    def _update_status(self) -> None:
+        # Master password and app/group passwords share the same status display logic.
+        s = self._get_status()
+        attempts = s["attempts"]
+        left = 10 - attempts
+
+        if self.is_master and not s["locked"] and attempts == 0:
             self.status_lbl.setText(t("pw_enter_master"))
             self.status_lbl.setStyleSheet("color: #94a3b8; background: transparent;")
             self.pw_edit.setEnabled(True)
@@ -293,14 +307,20 @@ class PasswordDialog(QDialog):
             return
 
         if self.is_master:
+            s = self._get_status()
+            if s["locked"]:
+                self._update_status()
+                return
             if self.config.verify_master_password(pw):
+                self.config.record_master_success()
                 self.config.log_activity("Login Successful", "Logged into Management Panel.")
-                self._timer.stop(); self.accept()
+                self._timer.stop()
+                self.accept()
             else:
+                self.config.record_master_failed()
                 self.config.log_activity("Incorrect Master Password", "Failed login attempt to Management Panel.")
                 self.pw_edit.clear()
-                self.status_lbl.setText(f"❌  {t('pw_wrong')}")
-                self.status_lbl.setStyleSheet("color: #f87171; font-weight: 700; background: transparent;")
+                self._update_status()
                 self.pw_edit.setFocus()
             return
 
@@ -341,7 +361,8 @@ class PasswordDialog(QDialog):
 
         new_pw, ok = QInputDialog.getText(self, t("pw_usb_reset"), t("pw_reset_new"),
                                            QLineEdit.EchoMode.Password)
-        if not ok or not new_pw.strip():
+        new_pw = new_pw.strip()  # strip before any check
+        if not ok or not new_pw:
             return
         confirm, ok2 = QInputDialog.getText(self, t("confirm_pw_title"), t("pw_reset_confirm"),
                                              QLineEdit.EchoMode.Password)

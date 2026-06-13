@@ -3,10 +3,13 @@ core/backup.py — Encrypted backup system (.agbackup)
 Encrypts/decrypts settings, profiles and apps with AES-256-GCM.
 """
 import json
+import logging
 import os
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from core.crypto import encrypt_data, decrypt_data
+
+log = logging.getLogger(__name__)
 
 
 def _get_key(password: str, salt: bytes) -> bytes:
@@ -41,40 +44,52 @@ def create_backup(data: dict, password: str, filepath: str) -> bool:
             raise
         return True
     except Exception as e:
-        print(f"Backup error: {e}")
+        log.error("Backup error: %s", e, exc_info=True)
         return False
 
 
 def restore_backup(password: str, filepath: str) -> dict | None:
     try:
-        with open(filepath, 'rb') as file:
+        with open(filepath, "rb") as file:
             content = file.read()
-            
-        salt = content[:16]
+
+        # Minimum valid file: 16-byte salt + 28-byte AES-GCM blob = 44 bytes.
+        if len(content) < 44:
+            raise ValueError(
+                f"Backup file is too short ({len(content)} bytes); it may be corrupted."
+            )
+
+        salt      = content[:16]
         encrypted = content[16:]
         
         key = _get_key(password, salt)
         
-        # Try to decrypt using AES-GCM
         try:
             decrypted = decrypt_data(encrypted, key)
-            return json.loads(decrypted.decode('utf-8'))
+            return json.loads(decrypted.decode("utf-8"))
         except Exception:
-            # Fallback to legacy Fernet (AES-128-CBC)
+            # Fallback: try legacy Fernet (AES-128-CBC, 100k PBKDF2 iterations).
+            # WARNING: 100k PBKDF2-SHA256 iterations is below the 2023 NIST
+            # recommendation of 600k. Legacy backups are weaker; prompt the
+            # user to re-export after a successful restore.
             import base64
             from cryptography.fernet import Fernet
-            
+
             legacy_kdf = PBKDF2HMAC(
                 algorithm=hashes.SHA256(),
                 length=32,
                 salt=salt,
-                iterations=100000,
+                iterations=100_000,
             )
             legacy_key = base64.urlsafe_b64encode(legacy_kdf.derive(password.encode()))
             f = Fernet(legacy_key)
             decrypted = f.decrypt(encrypted)
-            return json.loads(decrypted.decode('utf-8'))
-            
+            log.warning(
+                "Restored from a legacy backup (weak 100k-iteration PBKDF2). "
+                "Please re-export a new backup to use the current encryption."
+            )
+            return json.loads(decrypted.decode("utf-8"))
+
     except Exception as e:
-        print(f"Restore error: {e}")
+        log.error("Restore error: %s", e, exc_info=True)
         return None

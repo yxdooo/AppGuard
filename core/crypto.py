@@ -14,7 +14,10 @@ try:
 except ImportError:
     _DPAPI_AVAILABLE = False
 
-ph = PasswordHasher()
+# Argon2id parameters (reviewed 2025-06 against OWASP recommendations).
+# time_cost=3 iterations, memory_cost=64 MiB, parallelism=4 threads.
+# Increase memory_cost / time_cost if hardware allows on future reviews.
+ph = PasswordHasher(time_cost=3, memory_cost=65536, parallelism=4)
 
 # Context string bound to every AES-GCM ciphertext as Additional Authenticated
 # Data (AAD). Prevents a valid ciphertext produced for one context from being
@@ -180,9 +183,16 @@ def decrypt_data(encrypted_data: bytes, key: bytes, aad: bytes = _AAD) -> bytes:
     """
     Decrypt *encrypted_data* produced by :func:`encrypt_data`.
 
+    Raises ``ValueError`` if the blob is too short to contain a valid nonce.
     Raises ``cryptography.exceptions.InvalidTag`` if the key, nonce, AAD, or
     ciphertext has been tampered with.
     """
+    # Minimum valid blob: 12-byte nonce + 16-byte GCM tag = 28 bytes.
+    if len(encrypted_data) < 28:
+        raise ValueError(
+            f"Ciphertext is too short ({len(encrypted_data)} bytes); "
+            "expected at least 28 bytes (12-byte nonce + 16-byte GCM tag)."
+        )
     aesgcm = AESGCM(key)
     nonce = encrypted_data[:12]
     ciphertext = encrypted_data[12:]

@@ -3,12 +3,25 @@ core/config.py — Configuration management
 Passwords, lock status, USB whitelist, groups and app settings.
 """
 import json
+import logging
 import os
 import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from core.crypto import hash_password, verify_password, get_machine_key, encrypt_data, decrypt_data
+
+log = logging.getLogger(__name__)
+
+# ── Lockout thresholds ────────────────────────────────────────────────────────
+# These constants define when lockouts are applied and for how long.
+_LOCKOUT_ATTEMPTS_SOFT   = 3   # 2-minute lockout after this many failures
+_LOCKOUT_ATTEMPTS_MEDIUM = 6   # 10-minute lockout
+_LOCKOUT_ATTEMPTS_HARD   = 9   # 30-minute lockout
+_LOCKOUT_ATTEMPTS_USB    = 10  # USB-only mode after this many failures
+_LOCKOUT_MINUTES_SOFT    = 2
+_LOCKOUT_MINUTES_MEDIUM  = 10
+_LOCKOUT_MINUTES_HARD    = 30
 
 CONFIG_DIR = Path(os.environ.get("APPDATA", ".")) / "AppGuard"
 CONFIG_FILE = CONFIG_DIR / "config.json"
@@ -62,8 +75,9 @@ class Config:
                     decrypted = decrypt_data(f.read(), key)
                 return json.loads(decrypted.decode("utf-8"))
             except Exception as e:
-                import traceback
-                print(f"Encrypted config could not be loaded: {e}\n{traceback.format_exc()}")
+                log.error(
+                    "Encrypted config could not be loaded: %s", e, exc_info=True
+                )
         
         # 2. Is there a legacy plaintext config? (Auto Migration)
         if CONFIG_FILE.exists():
@@ -71,25 +85,34 @@ class Config:
                 with open(CONFIG_FILE, "r", encoding="utf-8") as f:
                     data = json.load(f)
                 
-                # Try saving to the new encrypted system
+                # Try saving to the new encrypted system.
+                # NOTE: We do NOT assign self.data here — _load() is called
+                # from __init__ before self.data is set, so we call save()
+                # with a temporary assignment that we immediately clean up.
+                _prev = getattr(self, "data", None)
                 self.data = data
-                self.save()
-                
+                try:
+                    self.save()
+                finally:
+                    if _prev is None:
+                        # Restore sentinel so __init__ can do self.data = self._load()
+                        del self.data
+
                 # Delete old plaintext file after migrating to encrypted storage.
                 # Failure is NOT silently ignored — a plaintext config left on disk
                 # is a security risk and the user should be informed.
                 try:
                     os.remove(CONFIG_FILE)
                 except OSError as exc:
-                    print(
-                        f"[AppGuard] WARNING: Could not delete plaintext config file "
-                        f"'{CONFIG_FILE}': {exc}. "
-                        "Please delete it manually to protect your data."
+                    log.warning(
+                        "Could not delete plaintext config file '%s': %s. "
+                        "Please delete it manually to protect your data.",
+                        CONFIG_FILE, exc
                     )
-                    
+
                 return data
             except Exception:
-                pass
+                log.exception("Failed to migrate legacy plaintext config")
                 
         return _default()
 
@@ -113,7 +136,7 @@ class Config:
                     pass
                 raise
         except Exception as e:
-            print(f"Config could not be saved: {e}")
+            log.error("Config could not be saved: %s", e, exc_info=True)
 
     # ── Master Password ──────────────────────────────────────────────────
     def has_master_password(self) -> bool:
@@ -128,11 +151,39 @@ class Config:
         mp = self.data.get("master_password")
         if not mp:
             return True
-        is_valid, needs_rehash = verify_password(pw, mp["hash"], mp.get("salt"))
+        stored_hash = mp.get("hash")
+        if not stored_hash:
+            # Corrupted record — deny access rather than grant it.
+            log.error("master_password record exists but has no 'hash' key")
+            return False
+        is_valid, needs_rehash = verify_password(pw, stored_hash, mp.get("salt"))
         if is_valid and needs_rehash:
             # Transparently migrate legacy SHA-256 hash to Argon2id.
             self.set_master_password(pw)
         return is_valid
+
+    # ── Master Password Lockout ──────────────────────────────────────────
+    def get_master_lockout_status(self) -> dict:
+        """Return lockout status for the master password."""
+        mp = self.data.get("master_password")
+        if not mp:
+            return {"locked": False, "reason": None, "remaining_seconds": 0, "attempts": 0}
+        return self._get_lockout_status(mp)
+
+    def record_master_failed(self) -> None:
+        """Increment failed master-password attempts and apply lockout."""
+        mp = self.data.get("master_password")
+        if not mp:
+            return
+        self._apply_lockout(mp)
+        self.save()
+
+    def record_master_success(self) -> None:
+        """Reset master-password failed attempts after a successful login."""
+        mp = self.data.get("master_password")
+        if mp:
+            mp.update({"failed_attempts": 0, "lockout_until": None, "usb_only_mode": False})
+            self.save()
 
     # ── Protected Apps ───────────────────────────────────────────────────
     def add_protected_app(self, exe_path: str, name: str, pw: str, hint: str = "") -> str:
@@ -174,7 +225,11 @@ class Config:
         app = self.data["protected_apps"].get(app_id)
         if not app:
             return False
-        is_valid, needs_rehash = verify_password(pw, app["password_hash"], app.get("salt"))
+        stored_hash = app.get("password_hash")
+        if not stored_hash:
+            log.error("App %s has no password_hash", app_id)
+            return False
+        is_valid, needs_rehash = verify_password(pw, stored_hash, app.get("salt"))
         if is_valid and needs_rehash:
             self.set_app_password(app_id, pw)
         return is_valid
@@ -199,15 +254,15 @@ class Config:
         record["failed_attempts"] = record.get("failed_attempts", 0) + 1
         n = record["failed_attempts"]
         now = self._utcnow()
-        if n >= 10:
+        if n >= _LOCKOUT_ATTEMPTS_USB:
             record["usb_only_mode"] = True
             record["lockout_until"] = None  # clear stale timer
-        elif n >= 9:
-            record["lockout_until"] = (now + timedelta(minutes=30)).isoformat()
-        elif n >= 6:
-            record["lockout_until"] = (now + timedelta(minutes=10)).isoformat()
-        elif n >= 3:
-            record["lockout_until"] = (now + timedelta(minutes=2)).isoformat()
+        elif n >= _LOCKOUT_ATTEMPTS_HARD:
+            record["lockout_until"] = (now + timedelta(minutes=_LOCKOUT_MINUTES_HARD)).isoformat()
+        elif n >= _LOCKOUT_ATTEMPTS_MEDIUM:
+            record["lockout_until"] = (now + timedelta(minutes=_LOCKOUT_MINUTES_MEDIUM)).isoformat()
+        elif n >= _LOCKOUT_ATTEMPTS_SOFT:
+            record["lockout_until"] = (now + timedelta(minutes=_LOCKOUT_MINUTES_SOFT)).isoformat()
 
     def _get_lockout_status(self, record: dict) -> dict:
         """Return lockout status dict for *record* (app or group)."""
@@ -295,7 +350,11 @@ class Config:
         g = self.data["groups"].get(gid)
         if not g:
             return False
-        is_valid, needs_rehash = verify_password(pw, g["password_hash"], g.get("salt"))
+        stored_hash = g.get("password_hash")
+        if not stored_hash:
+            log.error("Group %s has no password_hash", gid)
+            return False
+        is_valid, needs_rehash = verify_password(pw, stored_hash, g.get("salt"))
         if is_valid and needs_rehash:
             self.set_group_password(gid, pw)
         return is_valid
@@ -397,10 +456,14 @@ class Config:
         self.save()
 
     # ── Activity Log ─────────────────────────────────────────────────────
-    def log_activity(self, action: str, details: str):
-        log = self.data.setdefault("activity_log", [])
-        log.insert(0, {"time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "action": action, "details": details})
+    def log_activity(self, action: str, details: str) -> None:
+        activity_log = self.data.setdefault("activity_log", [])
+        activity_log.insert(0, {
+            "time": self._utcnow().strftime("%Y-%m-%d %H:%M:%S UTC"),
+            "action": action,
+            "details": details,
+        })
         # Keep the last 100 records
-        self.data["activity_log"] = log[:100]
+        self.data["activity_log"] = activity_log[:100]
         self.save()
 
