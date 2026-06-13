@@ -130,12 +130,13 @@ def get_machine_key(key_path: str) -> bytes:
         return key
 
     # No key file yet — generate and persist a fresh one.
+    import uuid
     key = os.urandom(32)
     enc_key = win32crypt.CryptProtectData(key, "AppGuard Config Key", entropy, None, None, 0)
 
     # Write to a temp file first, then atomically replace the target so that a
     # mid-write crash cannot leave a truncated / corrupt key file behind.
-    tmp_path = key_path + ".tmp"
+    tmp_path = key_path + f".{uuid.uuid4().hex[:8]}.tmp"
     try:
         with open(tmp_path, "wb") as f:
             f.write(enc_key)

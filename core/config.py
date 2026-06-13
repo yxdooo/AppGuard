@@ -55,6 +55,9 @@ def _default() -> dict:
 
 class Config:
     def __init__(self):
+        import threading
+        self._lock = threading.RLock()
+        
         CONFIG_DIR.mkdir(parents=True, exist_ok=True)
         self.data = self._load()
         # Fill missing fields (for older config files)
@@ -117,26 +120,28 @@ class Config:
         return _default()
 
     def save(self) -> None:
-        try:
-            key = get_machine_key(str(KEY_FILE))
-            raw_data = json.dumps(self.data, ensure_ascii=False).encode("utf-8")
-            encrypted = encrypt_data(raw_data, key)
-
-            # Atomic write: write to temp then replace so a crash mid-write
-            # cannot corrupt the only copy of the config.
-            tmp = str(ENC_CONFIG_FILE) + ".tmp"
+        with self._lock:
             try:
-                with open(tmp, "wb") as f:
-                    f.write(encrypted)
-                os.replace(tmp, str(ENC_CONFIG_FILE))
-            except Exception:
+                key = get_machine_key(str(KEY_FILE))
+                raw_data = json.dumps(self.data, ensure_ascii=False).encode("utf-8")
+                encrypted = encrypt_data(raw_data, key)
+
+                # Atomic write: write to a unique temp file then replace.
+                # A unique name prevents concurrent writers from corrupting the temp file
+                # even if the lock is somehow bypassed.
+                tmp = str(ENC_CONFIG_FILE) + f".{uuid.uuid4().hex[:8]}.tmp"
                 try:
-                    os.remove(tmp)
-                except OSError:
-                    pass
-                raise
-        except Exception as e:
-            log.error("Config could not be saved: %s", e, exc_info=True)
+                    with open(tmp, "wb") as f:
+                        f.write(encrypted)
+                    os.replace(tmp, str(ENC_CONFIG_FILE))
+                except Exception:
+                    try:
+                        os.remove(tmp)
+                    except OSError:
+                        pass
+                    raise
+            except Exception as e:
+                log.error("Config could not be saved: %s", e, exc_info=True)
 
     # ── Master Password ──────────────────────────────────────────────────
     def has_master_password(self) -> bool:
