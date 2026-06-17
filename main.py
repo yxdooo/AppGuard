@@ -184,9 +184,11 @@ class AppGuardController(QObject):
         self.config._session_master_pw = dlg.get_password()
 
         if not self.main_window:
-            self.main_window = MainWindow(self.config, controller=self)
-            # Bind emergency lock callback
-            self.main_window._emergency_lock_cb = self._emergency_lock
+            self.main_window = MainWindow(
+                self.config, 
+                controller=self, 
+                emergency_lock_cb=self._emergency_lock
+            )
 
         self.main_window.refresh()
         self.main_window.show()
@@ -237,6 +239,8 @@ class AppGuardController(QObject):
     def _on_screen_lock(self):
         if self.config.get_setting("lock_on_screen_lock", True):
             self.guard.clear_all_pids()
+            if hasattr(self.config, "_session_master_pw"):
+                delattr(self.config, "_session_master_pw")
             self._on_notification("🔒 AppGuard", "Screen locked, permissions reset.")
             self.config.log_activity("Screen Locked", "All session permissions reset.")
 
@@ -246,6 +250,8 @@ class AppGuardController(QObject):
     # ── Emergency Lock ───────────────────────────────────────────────────
     def _emergency_lock(self):
         self.guard.clear_all_pids()
+        if hasattr(self.config, "_session_master_pw"):
+            delattr(self.config, "_session_master_pw")
         self._on_notification("⚡ AppGuard", "System emergency locked!")
         self.config.log_activity("Emergency Lock", "All permissions reset.")
 

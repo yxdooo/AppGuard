@@ -1,4 +1,4 @@
-﻿from PyQt6.QtWidgets import QWidget, QListWidgetItem
+from PyQt6.QtWidgets import QWidget, QListWidgetItem
 from PyQt6.QtCore import QSize, QVBoxLayout, QHBoxLayout, QMessageBox, QInputDialog
 from PyQt6.QtCore import Qt, pyqtSignal
 from qfluentwidgets import (
@@ -39,6 +39,11 @@ class UsbInterface(ScrollArea):
         
         self.vBoxLayout.addLayout(headerLayout)
         
+        warning_lbl = BodyLabel(t("usb_spoof_warning", "Warning: Windows USB Volume Serials can be spoofed. Use physical security in addition to USB locks."), self.view)
+        warning_lbl.setStyleSheet("color: #f59e0b; font-size: 11px;")
+        warning_lbl.setWordWrap(True)
+        self.vBoxLayout.addWidget(warning_lbl)
+        
         self.usbList = ListWidget(self.view)
         self.usbList.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.usbList.customContextMenuRequested.connect(self._show_context_menu)
@@ -47,7 +52,7 @@ class UsbInterface(ScrollArea):
     def load_usbs(self, usb_list):
         self.usbList.clear()
         for usb in usb_list:
-            item = QListWidgetItem(f"  ğŸ”‘  {usb['label']}  ({usb['serial']})")
+            item = QListWidgetItem(f"  🔑  {usb['label']}  ({usb['serial']})")
             item.setData(Qt.ItemDataRole.UserRole, usb["serial"])
             item.setSizeHint(QSize(0, 44))
             self.usbList.addItem(item)

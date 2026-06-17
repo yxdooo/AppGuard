@@ -19,7 +19,10 @@ class SessionMonitor(threading.Thread):
         self.on_lock = on_lock
         self.on_unlock = on_unlock
         self._stop_event = threading.Event()
-        self._was_locked = self._check_locked()
+        try:
+            self._was_locked = self._check_locked()
+        except Exception:
+            self._was_locked = False
 
     @staticmethod
     def _check_locked() -> bool:

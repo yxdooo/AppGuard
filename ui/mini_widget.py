@@ -5,6 +5,7 @@ from PyQt6.QtWidgets import QWidget, QLabel, QVBoxLayout, QPushButton, QHBoxLayo
 from PyQt6.QtCore import Qt, QPoint
 from PyQt6.QtGui import QFont, QPainter, QColor, QBrush, QPen
 from ui.theme import get_accent_color, get_style
+from core.i18n import t
 
 class MiniWidget(QWidget):
     def __init__(self, config, on_open_dashboard, parent=None):
@@ -43,11 +44,11 @@ class MiniWidget(QWidget):
         lay.addLayout(top)
         
         # Content
-        self.stat_lbl = QLabel("0 Uygulama")
+        self.stat_lbl = QLabel(f"0 {t('tab_apps')}")
         self.stat_lbl.setStyleSheet("color: #cbd5e1; font-size: 10px;")
         lay.addWidget(self.stat_lbl)
         
-        open_btn = QPushButton("Open Panel")
+        open_btn = QPushButton(t("tray_open"))
         open_btn.setFixedHeight(22)
         open_btn.setStyleSheet(f"background: {get_accent_color()}; color: white; border-radius: 4px; font-size: 10px;")
         open_btn.clicked.connect(self.on_open_dashboard)
@@ -55,7 +56,7 @@ class MiniWidget(QWidget):
 
     def update_stats(self):
         apps = len(self.config.get_protected_apps())
-        self.stat_lbl.setText(f"{apps} Protected")
+        self.stat_lbl.setText(f"{apps} {t('stats_apps')}")
         self.update()
 
     def paintEvent(self, event):

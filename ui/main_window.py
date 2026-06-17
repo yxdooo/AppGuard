@@ -19,10 +19,11 @@ from PyQt6.QtWidgets import QMessageBox
 from core.i18n import t
 
 class MainWindow(FluentWindow):
-    def __init__(self, config, controller=None):
+    def __init__(self, config, controller=None, emergency_lock_cb=None):
         super().__init__()
         self.config = config
         self.controller = controller
+        self._emergency_lock_cb = emergency_lock_cb
         self.setWindowTitle("AppGuard Pro")
         self.setMinimumSize(960, 650)
         
@@ -65,8 +66,10 @@ class MainWindow(FluentWindow):
     def _init_connections(self):
         self.apps_interface.app_added.connect(self._add_app)
         self.apps_interface.app_removed.connect(self._remove_app)
+        self.apps_interface.app_selected.connect(self._change_app_pw)
         self.groups_interface.group_added.connect(self._add_group)
         self.groups_interface.group_removed.connect(self._remove_group)
+        self.groups_interface.group_selected.connect(self._change_group_pw)
         self.usb_interface.usb_added.connect(self._add_usb)
         self.usb_interface.usb_removed.connect(self._remove_usb)
 
@@ -100,6 +103,17 @@ class MainWindow(FluentWindow):
         self.config.remove_protected_app(app_id)
         self.refresh()
 
+    def _change_app_pw(self, app_id: str):
+        app = self.config.data.get("apps", {}).get(app_id)
+        if not app: return
+        name = app.get("name", "App")
+        pw_dlg = PasswordInputWithStrength(t("dlg_new_pw_title"), f"{name} {t('dlg_new_pw_lbl')}", parent=self)
+        if pw_dlg.exec() == pw_dlg.DialogCode.Accepted:
+            pw = pw_dlg.get_password()
+            self.config.update_app_password(app_id, pw)
+            QMessageBox.information(self, t("success_title"), t("dlg_updated_msg"))
+            self.refresh()
+
     def _add_group(self, name):
         pw_dlg = PasswordInputWithStrength(t("dlg_group_pw_title"), f"{name} {t('dlg_group_pw_lbl')}", parent=self)
         if pw_dlg.exec() == pw_dlg.DialogCode.Accepted:
@@ -110,6 +124,17 @@ class MainWindow(FluentWindow):
     def _remove_group(self, gid):
         self.config.remove_group(gid)
         self.refresh()
+
+    def _change_group_pw(self, gid: str):
+        group = self.config.data.get("groups", {}).get(gid)
+        if not group: return
+        name = group.get("name", "Group")
+        pw_dlg = PasswordInputWithStrength(t("dlg_new_pw_title"), f"{name} {t('dlg_new_pw_lbl')}", parent=self)
+        if pw_dlg.exec() == pw_dlg.DialogCode.Accepted:
+            pw = pw_dlg.get_password()
+            self.config.update_group_password(gid, pw)
+            QMessageBox.information(self, t("success_title"), t("dlg_updated_msg"))
+            self.refresh()
 
     def _add_usb(self, serial: str, label: str) -> None:
         self.config.add_usb_to_whitelist(serial, label)

@@ -32,12 +32,12 @@ def get_accent_color() -> str:
 def get_style(inner_bg: str = "#0d0d1a") -> str:
     a, d, dd = ACCENT_COLORS[_current]
     return f"""
-/* ── Genel ── */
+/* ── General ── */
 QMainWindow, QWidget {{ background: {inner_bg}; color: #e2e8f0;
     font-family: 'Segoe UI', Arial, sans-serif; font-size: 13px; }}
 QDialog {{ background: #0f0f23; }}
 
-/* ── Sekme ── */
+/* ── Tab ── */
 QTabWidget::pane {{ border: 1px solid #2d2d50; border-radius: 10px;
     background: #13132a; margin-top: -1px; }}
 QTabBar::tab {{ background: #1a1a2e; color: #64748b; padding: 10px 22px;
@@ -47,7 +47,7 @@ QTabBar::tab {{ background: #1a1a2e; color: #64748b; padding: 10px 22px;
 QTabBar::tab:selected {{ background: {a}; color: white; border-color: {a}; }}
 QTabBar::tab:hover:!selected {{ background: #1e1e38; color: #94a3b8; }}
 
-/* ── Butonlar ── */
+/* ── Buttons ── */
 QPushButton {{ background: {a}; color: white; border: none; border-radius: 8px;
     padding: 9px 18px; font-weight: 600; font-size: 13px;
     font-family: 'Segoe UI', Arial, sans-serif; }}
@@ -64,7 +64,7 @@ QPushButton[role="icon"] {{ background: #1e1e38; color: #e2e8f0;
     border: 1px solid #2d2d50; font-size: 16px; padding: 0; }}
 QPushButton[role="icon"]:hover {{ background: #2d2d50; }}
 
-/* ── Liste ── */
+/* ── List ── */
 QListWidget {{ background: #13132a; border: 1px solid #1e1e38;
     border-radius: 10px; outline: none; padding: 4px; }}
 QListWidget::item {{ padding: 10px 12px; border-radius: 6px; color: #cbd5e1;

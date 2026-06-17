@@ -1,4 +1,4 @@
-﻿from PyQt6.QtWidgets import QWidget, QListWidgetItem
+from PyQt6.QtWidgets import QWidget, QListWidgetItem
 from PyQt6.QtCore import QSize, QVBoxLayout, QHBoxLayout, QInputDialog
 from PyQt6.QtCore import Qt, pyqtSignal
 from qfluentwidgets import (
@@ -49,13 +49,13 @@ class GroupsInterface(ScrollArea):
         self.groupList.clear()
         for gid, g in groups_dict.items():
             n = len(g.get("app_ids", []))
-            item = QListWidgetItem(f"  ğŸ—‚  {g['name']}  ({n} apps)")
+            item = QListWidgetItem(f"  📁  {g['name']}  ({t('group_apps_count', n=n)})")
             item.setData(Qt.ItemDataRole.UserRole, gid)
             item.setSizeHint(QSize(0, 46))
             self.groupList.addItem(item)
 
     def _on_add_group(self):
-        text, ok = QInputDialog.getText(self, "New Group", "Group Name:")
+        text, ok = QInputDialog.getText(self, t("dlg_group_name_title"), t("dlg_group_name_lbl"))
         if ok and text:
             self.group_added.emit(text)
 

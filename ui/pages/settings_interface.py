@@ -106,7 +106,7 @@ class SettingsInterface(ScrollArea):
         self.languageCard = SimpleComboBoxSettingCard(
             FIF.LANGUAGE,
             t("setting_language"),
-            "Change to English or Turkish (Restart app to apply)",
+            t("setting_language_desc"),
             texts=["Türkçe", "English"],
             parent=self.appearanceGroup
         )
@@ -179,6 +179,10 @@ class SettingsInterface(ScrollArea):
             self.main_window._restart_remote_server()
             
     def _show_qr(self) -> None:
+        if not self.config.get_setting("remote_lock_enabled", False):
+            QMessageBox.warning(self, t("error_title"), t("remote_lock_desc"))
+            return
+
         from core.remote_lock import get_local_ip, generate_qr_code
 
         ip = get_local_ip()
@@ -221,7 +225,9 @@ class SettingsInterface(ScrollArea):
                 else:
                     # Running from source: prefer pythonw.exe to suppress the
                     # console window. Fall back to whatever interpreter is active.
-                    pythonw = sys.executable.replace("python.exe", "pythonw.exe")
+                    pythonw = os.path.join(os.path.dirname(sys.executable), "pythonw.exe")
+                    if not os.path.exists(pythonw):
+                        pythonw = sys.executable
                     script = os.path.normpath(
                         os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "main.py")
                     )
@@ -261,8 +267,20 @@ class SettingsInterface(ScrollArea):
 
         data = restore_backup(pw, path)
         if data:
-            self.config.data = data
-            self.config.save()
+            if hasattr(self.main_window, "controller"):
+                ctrl = self.main_window.controller
+                ctrl.guard.stop()
+                ctrl.usb_monitor.stop()
+                ctrl.perf_monitor.stop()
+                if ctrl.remote_server:
+                    ctrl.remote_server.stop()
+                ctrl.session_monitor.stop()
+                ctrl.hotkey_mgr.disable()
+
+            with self.config._lock:
+                self.config.data = data
+                self.config.save()
+                
             QMessageBox.information(
                 self, t("success_title"),
                 "Restore successful. The application will now quit.\n"

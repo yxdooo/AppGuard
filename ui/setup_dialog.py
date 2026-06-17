@@ -10,7 +10,7 @@ from PyQt6.QtGui import QFont
 
 from core.i18n import t, set_lang, get_lang
 from ui.theme import ACCENT_COLORS, set_accent, get_accent, get_style
-
+from ui.password_dialog import StrengthBar, _password_strength
 
 _LANG_OPTIONS = [("tr", "Türkçe"), ("en", "English")]
 _THEME_KEYS   = list(ACCENT_COLORS.keys())
@@ -117,8 +117,7 @@ class SetupDialog(QDialog):
         self.pw1.setFixedHeight(46)
         lay.addWidget(self.pw1)
 
-        # Password strength bar
-        from ui.password_dialog import StrengthBar, _password_strength
+        # --- Master Password ---
         self.strength_bar = StrengthBar()
         lay.addWidget(self.strength_bar)
 
@@ -150,7 +149,6 @@ class SetupDialog(QDialog):
         lay.addWidget(self.ok_btn)
 
     def _on_pw_changed(self, text: str):
-        from ui.password_dialog import StrengthBar, _password_strength
         score, lbl = _password_strength(text)
         self.strength_bar.set_value(score)
         self.strength_lbl.setText(lbl)

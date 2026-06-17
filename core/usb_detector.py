@@ -38,10 +38,12 @@ def get_removable_drives() -> list[dict]:
                             "serial": str(vol_serial),
                         }
                     )
-                except Exception:
-                    pass
-        except Exception:
-            pass
+                except Exception as e:
+                    import logging
+                    logging.debug("GetVolumeInformation failed for %s: %s", drive, e)
+        except Exception as e:
+            import logging
+            logging.debug("GetDriveType failed for %s: %s", drive, e)
     return drives
 
 

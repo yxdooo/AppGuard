@@ -64,7 +64,7 @@ class AppLockInterface(ScrollArea):
         # Start from Program Files if it exists, otherwise the user's home dir.
         start_dir = os.environ.get("ProgramFiles", os.path.expanduser("~"))
         path, _ = QFileDialog.getOpenFileName(
-            self, "Select Application", start_dir, "Executable (*.exe *.EXE)"
+            self, t("dlg_select_app"), start_dir, t("exe_filter")
         )
         if path:
             # Use splitext so .EXE / .Exe variants are handled correctly.

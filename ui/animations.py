@@ -1,4 +1,4 @@
-﻿"""
+"""
 ui/animations.py â€” Animated tools for UI (Ripple etc.)
 """
 from PyQt6.QtWidgets import QPushButton
@@ -46,6 +46,7 @@ class RippleButton(QPushButton):
             painter.setBrush(QBrush(self._ripple_color))
             painter.setPen(Qt.PenStyle.NoPen)
             painter.drawEllipse(self._ripple_center, int(self._ripple_radius), int(self._ripple_radius))
+            painter.end()
 
 
 class SidebarBtn(QPushButton):
